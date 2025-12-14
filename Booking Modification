@@ -1,0 +1,1242 @@
+{
+  "useCase": {
+    "name": "Online Check-In Upsell & Service Actions",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "BookingManagement",
+    "group": "OnlineCheckInUpsell",
+    "description": "Real-time NBA during online check-in (web/app) to drive relevant ancillaries, upgrades, compliance actions, and service messages without friction."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        {
+          "name": "CustomerID",
+          "type": "string"
+        },
+        {
+          "name": "LoyaltyTier",
+          "type": "string",
+          "enum": [
+            "Basic",
+            "Silver",
+            "Gold",
+            "Platinum"
+          ]
+        },
+        {
+          "name": "LifetimeValueScore",
+          "type": "number"
+        },
+        {
+          "name": "ConsentEmail",
+          "type": "boolean"
+        },
+        {
+          "name": "ConsentSMS",
+          "type": "boolean"
+        },
+        {
+          "name": "ConsentPush",
+          "type": "boolean"
+        },
+        {
+          "name": "CountryOfResidence",
+          "type": "string"
+        },
+        {
+          "name": "PreferredSeatType",
+          "type": "string",
+          "enum": [
+            "Aisle",
+            "Window",
+            "Middle",
+            "None"
+          ]
+        },
+        {
+          "name": "PreferredDiet",
+          "type": "string",
+          "enum": [
+            "None",
+            "Vegetarian",
+            "Vegan",
+            "Halal",
+            "Kosher"
+          ]
+        },
+        {
+          "name": "BlacklistFlag",
+          "type": "boolean"
+        }
+      ],
+      "sample": {
+        "CustomerID": "CUST-320145",
+        "LoyaltyTier": "Gold",
+        "LifetimeValueScore": 845.2,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "CountryOfResidence": "NL",
+        "PreferredSeatType": "Window",
+        "PreferredDiet": "Vegetarian",
+        "BlacklistFlag": false
+      }
+    },
+    "TripContext": {
+      "schema": [
+        {
+          "name": "PNR",
+          "type": "string"
+        },
+        {
+          "name": "BookingChannel",
+          "type": "string",
+          "enum": [
+            "Web",
+            "App",
+            "Agent",
+            "Kiosk"
+          ]
+        },
+        {
+          "name": "Origin",
+          "type": "string"
+        },
+        {
+          "name": "Destination",
+          "type": "string"
+        },
+        {
+          "name": "DepartureDateTime",
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "name": "CabinClass",
+          "type": "string",
+          "enum": [
+            "Economy",
+            "PremiumEconomy",
+            "Business"
+          ]
+        },
+        {
+          "name": "FareBrand",
+          "type": "string",
+          "enum": [
+            "Basic",
+            "Standard",
+            "Flex",
+            "FlexPlus",
+            "Premium"
+          ]
+        },
+        {
+          "name": "NumberOfPassengers",
+          "type": "integer"
+        },
+        {
+          "name": "HasInfant",
+          "type": "boolean"
+        },
+        {
+          "name": "SeatSelected",
+          "type": "boolean"
+        },
+        {
+          "name": "PaidBaggageQty",
+          "type": "integer"
+        },
+        {
+          "name": "InsuranceSelected",
+          "type": "boolean"
+        },
+        {
+          "name": "VisaRequired",
+          "type": "boolean"
+        },
+        {
+          "name": "DocVerificationStatus",
+          "type": "string",
+          "enum": [
+            "Pending",
+            "Unknown",
+            "Verified",
+            "Rejected"
+          ]
+        }
+      ],
+      "sample": {
+        "PNR": "N4X8TR",
+        "BookingChannel": "Web",
+        "Origin": "AMS",
+        "Destination": "LIS",
+        "DepartureDateTime": "2026-02-05T07:40:00Z",
+        "CabinClass": "Economy",
+        "FareBrand": "Standard",
+        "NumberOfPassengers": 1,
+        "HasInfant": false,
+        "SeatSelected": false,
+        "PaidBaggageQty": 0,
+        "InsuranceSelected": false,
+        "VisaRequired": true,
+        "DocVerificationStatus": "Pending"
+      }
+    },
+    "FlightOperations": {
+      "schema": [
+        {
+          "name": "FlightNumber",
+          "type": "string"
+        },
+        {
+          "name": "SegmentDate",
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "name": "ForecastLoadFactor",
+          "type": "number"
+        },
+        {
+          "name": "SeatAvailabilityPremium",
+          "type": "integer"
+        },
+        {
+          "name": "SeatAvailabilityExtraLegroom",
+          "type": "integer"
+        },
+        {
+          "name": "FastTrackAvailability",
+          "type": "boolean"
+        },
+        {
+          "name": "PriorityBoardingAvailability",
+          "type": "boolean"
+        },
+        {
+          "name": "LoungeCapacityRemaining",
+          "type": "integer"
+        },
+        {
+          "name": "DelayRiskScore",
+          "type": "number"
+        }
+      ],
+      "sample": {
+        "FlightNumber": "HV6203",
+        "SegmentDate": "2026-02-05",
+        "ForecastLoadFactor": 0.77,
+        "SeatAvailabilityPremium": 9,
+        "SeatAvailabilityExtraLegroom": 6,
+        "FastTrackAvailability": true,
+        "PriorityBoardingAvailability": true,
+        "LoungeCapacityRemaining": 12,
+        "DelayRiskScore": 0.22
+      }
+    },
+    "CheckInSignals": {
+      "schema": [
+        {
+          "name": "Channel",
+          "type": "string",
+          "enum": [
+            "Web",
+            "App"
+          ]
+        },
+        {
+          "name": "SessionEvent",
+          "type": "string",
+          "enum": [
+            "CheckInStart",
+            "CheckInResume"
+          ]
+        },
+        {
+          "name": "CheckInStep",
+          "type": "string",
+          "enum": [
+            "Start",
+            "SeatSelection",
+            "Extras",
+            "Review",
+            "Payment"
+          ]
+        },
+        {
+          "name": "CheckInStarted",
+          "type": "boolean"
+        },
+        {
+          "name": "TimeToDepartureHours",
+          "type": "integer"
+        },
+        {
+          "name": "SeatMapOpened",
+          "type": "boolean"
+        },
+        {
+          "name": "PaymentStepEntered",
+          "type": "boolean"
+        },
+        {
+          "name": "AbandonedAncillaryType",
+          "type": "string",
+          "enum": [
+            "None",
+            "SeatUpgrade",
+            "ExtraLegroom",
+            "PriorityBoarding",
+            "FastTrack",
+            "LoungeAccess",
+            "ExtraBaggage",
+            "Insurance"
+          ]
+        },
+        {
+          "name": "PriceSensitivityScore",
+          "type": "number"
+        }
+      ],
+      "sample": {
+        "Channel": "Web",
+        "SessionEvent": "CheckInStart",
+        "CheckInStep": "SeatSelection",
+        "CheckInStarted": true,
+        "TimeToDepartureHours": 36,
+        "SeatMapOpened": true,
+        "PaymentStepEntered": false,
+        "AbandonedAncillaryType": "None",
+        "PriceSensitivityScore": 0.55
+      }
+    },
+    "PricingAndPartners": {
+      "schema": [
+        {
+          "name": "AncillaryBasePrice_SeatUpgrade",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_ExtraLegroom",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_PriorityBoarding",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_FastTrack",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_Lounge",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_Baggage",
+          "type": "number"
+        },
+        {
+          "name": "DynamicPriceMultiplier",
+          "type": "number"
+        },
+        {
+          "name": "BNPLEligible",
+          "type": "boolean"
+        },
+        {
+          "name": "CustomerRiskScore",
+          "type": "number"
+        },
+        {
+          "name": "BasketTotal",
+          "type": "number"
+        }
+      ],
+      "sample": {
+        "AncillaryBasePrice_SeatUpgrade": 18,
+        "AncillaryBasePrice_ExtraLegroom": 32,
+        "AncillaryBasePrice_PriorityBoarding": 9,
+        "AncillaryBasePrice_FastTrack": 15,
+        "AncillaryBasePrice_Lounge": 24,
+        "AncillaryBasePrice_Baggage": 28,
+        "DynamicPriceMultiplier": 1.12,
+        "BNPLEligible": true,
+        "CustomerRiskScore": 0.28,
+        "BasketTotal": 46
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        {
+          "name": "DepartureHour",
+          "type": "integer"
+        },
+        {
+          "name": "International",
+          "type": "boolean"
+        },
+        {
+          "name": "TimeToAirportMinutes",
+          "type": "integer"
+        },
+        {
+          "name": "ConnectionTimeMinutes",
+          "type": "integer"
+        },
+        {
+          "name": "DestinationCluster",
+          "type": "string",
+          "enum": [
+            "Beach",
+            "Ski",
+            "City",
+            "BusinessHub",
+            "Other"
+          ]
+        },
+        {
+          "name": "DutyFreeRoute",
+          "type": "boolean"
+        },
+        {
+          "name": "PastDutyFreeClicks",
+          "type": "integer"
+        },
+        {
+          "name": "PastDutyFreePurchases",
+          "type": "integer"
+        },
+        {
+          "name": "BNPLPermittedMarkets",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "FastTrackAirports",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "sample": {
+        "DepartureHour": 7,
+        "International": true,
+        "TimeToAirportMinutes": 60,
+        "ConnectionTimeMinutes": 0,
+        "DestinationCluster": "City",
+        "DutyFreeRoute": true,
+        "PastDutyFreeClicks": 2,
+        "PastDutyFreePurchases": 1,
+        "BNPLPermittedMarkets": [
+          "NL",
+          "FR",
+          "ES",
+          "PT"
+        ],
+        "FastTrackAirports": [
+          "AMS",
+          "ORY",
+          "BCN",
+          "LIS"
+        ]
+      }
+    }
+  },
+  "offers": [
+    {
+      "id": "SeatUpgrade",
+      "name": "Seat Upgrade",
+      "description": "Upgrade to preferred aisle/window seat."
+    },
+    {
+      "id": "ExtraLegroomSeat",
+      "name": "Extra Legroom Seat",
+      "description": "Upgrade to extra legroom rows."
+    },
+    {
+      "id": "PriorityBoarding",
+      "name": "Priority Boarding",
+      "description": "Access earlier boarding groups."
+    },
+    {
+      "id": "FastTrackSecurity",
+      "name": "Fast Track Security",
+      "description": "Priority security lane access."
+    },
+    {
+      "id": "LoungeAccess",
+      "name": "Lounge Access",
+      "description": "Day pass to partner lounges."
+    },
+    {
+      "id": "ExtraBaggage",
+      "name": "Extra Baggage",
+      "description": "Add checked baggage."
+    },
+    {
+      "id": "TravelInsurance",
+      "name": "Travel Insurance",
+      "description": "Trip protection add-on."
+    },
+    {
+      "id": "DocumentAssist",
+      "name": "Document Assist",
+      "description": "Visa/document checklist and verification fast-track."
+    },
+    {
+      "id": "DutyFreePreorder",
+      "name": "Duty-Free Preorder",
+      "description": "Pre-order duty-free for onboard pickup."
+    },
+    {
+      "id": "BNPLPayment",
+      "name": "BNPL Payment",
+      "description": "Installment option for ancillary basket."
+    }
+  ],
+  "treatments": {
+    "SeatUpgrade": [
+      {
+        "id": "Treat_SeatUpgrade_Banner",
+        "channel": "Web/App",
+        "placement": "SeatSelectionInlineBanner"
+      },
+      {
+        "id": "Treat_SeatUpgrade_Modal",
+        "channel": "Web/App",
+        "placement": "PostSeatMapModal"
+      },
+      {
+        "id": "Treat_SeatUpgrade_Agent",
+        "channel": "Agent",
+        "placement": "EscalationScript"
+      }
+    ],
+    "ExtraLegroomSeat": [
+      {
+        "id": "Treat_ExtraLegroom_Highlight",
+        "channel": "Web/App",
+        "placement": "SeatMapRowHighlight"
+      },
+      {
+        "id": "Treat_ExtraLegroom_EmailAbandon",
+        "channel": "Email",
+        "placement": "AbandonmentFollowUp"
+      }
+    ],
+    "PriorityBoarding": [
+      {
+        "id": "Treat_PriorityBoarding_PassReviewCard",
+        "channel": "Web/App",
+        "placement": "BoardingPassReviewCard"
+      },
+      {
+        "id": "Treat_PriorityBoarding_Push",
+        "channel": "Push",
+        "placement": "ConsentPushReminder"
+      }
+    ],
+    "FastTrackSecurity": [
+      {
+        "id": "Treat_FastTrack_ExtrasInterstitial",
+        "channel": "Web/App",
+        "placement": "ExtrasInterstitial"
+      },
+      {
+        "id": "Treat_FastTrack_KioskPrompt",
+        "channel": "Kiosk",
+        "placement": "AirportKioskPrompt"
+      }
+    ],
+    "LoungeAccess": [
+      {
+        "id": "Treat_Lounge_Tile",
+        "channel": "Web/App",
+        "placement": "ExtrasTile"
+      },
+      {
+        "id": "Treat_Lounge_EmailQR",
+        "channel": "Email",
+        "placement": "VoucherQR"
+      }
+    ],
+    "ExtraBaggage": [
+      {
+        "id": "Treat_Baggage_CheckInCard",
+        "channel": "Web/App",
+        "placement": "ExtrasStepCard"
+      },
+      {
+        "id": "Treat_Baggage_SMSReminder",
+        "channel": "SMS",
+        "placement": "Reminder12to24h"
+      }
+    ],
+    "TravelInsurance": [
+      {
+        "id": "Treat_Insurance_CompareCard",
+        "channel": "Web/App",
+        "placement": "PremiumVsBasicCompare"
+      },
+      {
+        "id": "Treat_Insurance_EmailSummary",
+        "channel": "Email",
+        "placement": "PolicySummaryFollowUp"
+      }
+    ],
+    "DocumentAssist": [
+      {
+        "id": "Treat_DocAssist_ComplianceBanner",
+        "channel": "Web/App",
+        "placement": "ComplianceBanner"
+      },
+      {
+        "id": "Treat_DocAssist_ChecklistModal",
+        "channel": "Web/App",
+        "placement": "ChecklistModal"
+      }
+    ],
+    "DutyFreePreorder": [
+      {
+        "id": "Treat_DutyFree_Carousel",
+        "channel": "Web/App",
+        "placement": "ExtrasCarousel"
+      },
+      {
+        "id": "Treat_DutyFree_EmailWallet",
+        "channel": "Email",
+        "placement": "WalletConfirmation"
+      }
+    ],
+    "BNPLPayment": [
+      {
+        "id": "Treat_BNPL_Toggle",
+        "channel": "Web/App",
+        "placement": "PaymentScreenToggle"
+      },
+      {
+        "id": "Treat_BNPL_EmailSchedule",
+        "channel": "Email",
+        "placement": "InstallmentScheduleEmail"
+      }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      {
+        "ruleName": "Common_Eligibility_NotBlacklisted",
+        "expression": "Customer.BlacklistFlag = false"
+      },
+      {
+        "ruleName": "Common_Eligibility_ActivePNR_CheckInContext",
+        "expression": "TripContext.PNR != null AND CheckInSignals.CheckInStarted = true"
+      },
+      {
+        "ruleName": "Common_Eligibility_FlightScheduled",
+        "expression": "TripContext.DepartureDateTime > now()"
+      },
+      {
+        "ruleName": "Common_Eligibility_SessionIsCheckIn",
+        "expression": "CheckInSignals.SessionEvent IN ['CheckInStart','CheckInResume'] OR CheckInSignals.CheckInStep IN ['SeatSelection','Extras','Review','Payment']"
+      },
+      {
+        "ruleName": "Common_Eligibility_ChannelReachable",
+        "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentPush) = true"
+      }
+    ],
+    "individual": [
+      {
+        "offerId": "SeatUpgrade",
+        "ruleName": "Elig_SeatUpgrade",
+        "conditions": [
+          {
+            "label": "Seat availability",
+            "expression": "FlightOperations.SeatAvailabilityPremium >= 4"
+          },
+          {
+            "label": "Seat not selected yet",
+            "expression": "TripContext.SeatSelected = false OR CheckInSignals.SeatMapOpened = true"
+          },
+          {
+            "label": "Fare brand filter",
+            "expression": "TripContext.FareBrand NOT IN ['Premium','FlexPlus']"
+          },
+          {
+            "label": "Price guardrail",
+            "expression": "PricingAndPartners.DynamicPriceMultiplier <= 1.25 OR CheckInSignals.PriceSensitivityScore <= 0.7"
+          },
+          {
+            "label": "Time window",
+            "expression": "CheckInSignals.TimeToDepartureHours BETWEEN 6 AND 72"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraLegroomSeat",
+        "ruleName": "Elig_ExtraLegroom",
+        "conditions": [
+          {
+            "label": "Inventory",
+            "expression": "FlightOperations.SeatAvailabilityExtraLegroom >= 3"
+          },
+          {
+            "label": "Load factor guardrail",
+            "expression": "FlightOperations.ForecastLoadFactor <= 0.9"
+          },
+          {
+            "label": "Not already purchased",
+            "expression": "ContextDerived.ExtraLegroomPurchased != true"
+          },
+          {
+            "label": "Comfort intent",
+            "expression": "CheckInSignals.SeatMapOpened = true OR CustomerProfile.PreferredSeatType IN ['Aisle','Window']"
+          }
+        ]
+      },
+      {
+        "offerId": "PriorityBoarding",
+        "ruleName": "Elig_PriorityBoarding",
+        "conditions": [
+          {
+            "label": "Availability",
+            "expression": "FlightOperations.PriorityBoardingAvailability = true"
+          },
+          {
+            "label": "Fare brand not inclusive",
+            "expression": "TripContext.FareBrand NOT IN ['Premium']"
+          },
+          {
+            "label": "Group size",
+            "expression": "TripContext.NumberOfPassengers <= 2"
+          },
+          {
+            "label": "Peak departure",
+            "expression": "ContextDerived.DepartureHour IN [6,7,8,9,10,17,18,19,20]"
+          }
+        ]
+      },
+      {
+        "offerId": "FastTrackSecurity",
+        "ruleName": "Elig_FastTrack",
+        "conditions": [
+          {
+            "label": "Availability",
+            "expression": "FlightOperations.FastTrackAvailability = true"
+          },
+          {
+            "label": "Airport supported",
+            "expression": "TripContext.Origin IN ContextDerived.FastTrackAirports"
+          },
+          {
+            "label": "Tight timing",
+            "expression": "ContextDerived.TimeToAirportMinutes <= 90 OR ContextDerived.ConnectionTimeMinutes <= 60"
+          },
+          {
+            "label": "Loyalty boost",
+            "expression": "CustomerProfile.LoyaltyTier IN ['Silver','Gold','Platinum'] OR CustomerProfile.LifetimeValueScore >= 600"
+          }
+        ]
+      },
+      {
+        "offerId": "LoungeAccess",
+        "ruleName": "Elig_Lounge",
+        "conditions": [
+          {
+            "label": "Capacity",
+            "expression": "FlightOperations.LoungeCapacityRemaining >= 5"
+          },
+          {
+            "label": "Cabin or tier",
+            "expression": "TripContext.CabinClass IN ['Economy','PremiumEconomy'] AND CustomerProfile.LoyaltyTier IN ['Gold','Platinum']"
+          },
+          {
+            "label": "Stay duration",
+            "expression": "CheckInSignals.TimeToDepartureHours >= 2"
+          },
+          {
+            "label": "Price alignment",
+            "expression": "PricingAndPartners.AncillaryBasePrice_Lounge * PricingAndPartners.DynamicPriceMultiplier <= 35.00"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "ruleName": "Elig_ExtraBaggage",
+        "conditions": [
+          {
+            "label": "No baggage purchased",
+            "expression": "TripContext.PaidBaggageQty = 0"
+          },
+          {
+            "label": "Route propensity",
+            "expression": "ContextDerived.DestinationCluster IN ['Beach','Ski']"
+          },
+          {
+            "label": "Time window",
+            "expression": "CheckInSignals.TimeToDepartureHours BETWEEN 12 AND 72"
+          },
+          {
+            "label": "Price guardrail",
+            "expression": "PricingAndPartners.AncillaryBasePrice_Baggage * PricingAndPartners.DynamicPriceMultiplier <= 45.00"
+          }
+        ]
+      },
+      {
+        "offerId": "TravelInsurance",
+        "ruleName": "Elig_Insurance",
+        "conditions": [
+          {
+            "label": "Not purchased",
+            "expression": "TripContext.InsuranceSelected = false"
+          },
+          {
+            "label": "Risk or international",
+            "expression": "FlightOperations.DelayRiskScore >= 0.25 OR ContextDerived.International = true"
+          },
+          {
+            "label": "Household",
+            "expression": "TripContext.NumberOfPassengers >= 2"
+          },
+          {
+            "label": "Seasonality",
+            "expression": "ContextDerived.DestinationCluster IN ['Ski'] OR ContextDerived.DepartureHour IN [6,7,8] /* proxy for morning operational risk */"
+          }
+        ]
+      },
+      {
+        "offerId": "DocumentAssist",
+        "ruleName": "Elig_DocAssist",
+        "conditions": [
+          {
+            "label": "Visa required",
+            "expression": "TripContext.VisaRequired = true"
+          },
+          {
+            "label": "Status pending",
+            "expression": "TripContext.DocVerificationStatus IN ['Pending','Unknown']"
+          },
+          {
+            "label": "Lead time",
+            "expression": "CheckInSignals.TimeToDepartureHours >= 24"
+          },
+          {
+            "label": "Consent",
+            "expression": "CustomerProfile.ConsentEmail = true OR CustomerProfile.ConsentSMS = true"
+          }
+        ]
+      },
+      {
+        "offerId": "DutyFreePreorder",
+        "ruleName": "Elig_DutyFree",
+        "conditions": [
+          {
+            "label": "Route supports",
+            "expression": "ContextDerived.DutyFreeRoute = true"
+          },
+          {
+            "label": "Lead time",
+            "expression": "CheckInSignals.TimeToDepartureHours BETWEEN 6 AND 48"
+          },
+          {
+            "label": "Engagement",
+            "expression": "ContextDerived.PastDutyFreeClicks >= 1 OR ContextDerived.PastDutyFreePurchases >= 1"
+          },
+          {
+            "label": "Basket synergy",
+            "expression": "PricingAndPartners.BasketTotal <= 80.00 OR CheckInSignals.PriceSensitivityScore <= 0.6"
+          }
+        ]
+      },
+      {
+        "offerId": "BNPLPayment",
+        "ruleName": "Elig_BNPL",
+        "conditions": [
+          {
+            "label": "Partner available",
+            "expression": "PricingAndPartners.BNPLEligible = true"
+          },
+          {
+            "label": "Basket threshold",
+            "expression": "PricingAndPartners.BasketTotal >= 60.00"
+          },
+          {
+            "label": "Risk screen",
+            "expression": "PricingAndPartners.CustomerRiskScore <= 0.5"
+          },
+          {
+            "label": "Market allowed",
+            "expression": "CustomerProfile.CountryOfResidence IN ContextDerived.BNPLPermittedMarkets"
+          }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "SeatUpgrade",
+        "treatments": [
+          {
+            "treatmentId": "Treat_SeatUpgrade_Banner",
+            "expression": "CheckInSignals.CheckInStep = 'SeatSelection' AND FlightOperations.SeatAvailabilityPremium >= 4"
+          },
+          {
+            "treatmentId": "Treat_SeatUpgrade_Modal",
+            "expression": "CheckInSignals.SeatMapOpened = true AND TripContext.SeatSelected = false"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraLegroomSeat",
+        "treatments": [
+          {
+            "treatmentId": "Treat_ExtraLegroom_Highlight",
+            "expression": "FlightOperations.SeatAvailabilityExtraLegroom >= 3 AND CheckInSignals.SeatMapOpened = true"
+          },
+          {
+            "treatmentId": "Treat_ExtraLegroom_EmailAbandon",
+            "expression": "CustomerProfile.ConsentEmail = true AND CheckInSignals.AbandonedAncillaryType = 'ExtraLegroom'"
+          }
+        ]
+      },
+      {
+        "offerId": "PriorityBoarding",
+        "treatments": [
+          {
+            "treatmentId": "Treat_PriorityBoarding_PassReviewCard",
+            "expression": "CheckInSignals.CheckInStep = 'Review'"
+          },
+          {
+            "treatmentId": "Treat_PriorityBoarding_Push",
+            "expression": "CustomerProfile.ConsentPush = true AND CheckInSignals.TimeToDepartureHours BETWEEN 6 AND 24"
+          }
+        ]
+      },
+      {
+        "offerId": "FastTrackSecurity",
+        "treatments": [
+          {
+            "treatmentId": "Treat_FastTrack_ExtrasInterstitial",
+            "expression": "CheckInSignals.CheckInStep = 'Extras' AND FlightOperations.FastTrackAvailability = true"
+          },
+          {
+            "treatmentId": "Treat_FastTrack_KioskPrompt",
+            "expression": "TripContext.Origin IN ContextDerived.FastTrackAirports"
+          }
+        ]
+      },
+      {
+        "offerId": "LoungeAccess",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Lounge_Tile",
+            "expression": "CheckInSignals.CheckInStep = 'Extras' AND FlightOperations.LoungeCapacityRemaining >= 5"
+          },
+          {
+            "treatmentId": "Treat_Lounge_EmailQR",
+            "expression": "CustomerProfile.ConsentEmail = true AND Context.ActionOutcome = 'PurchaseSuccess'"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Baggage_CheckInCard",
+            "expression": "CheckInSignals.CheckInStep = 'Extras' AND TripContext.PaidBaggageQty = 0"
+          },
+          {
+            "treatmentId": "Treat_Baggage_SMSReminder",
+            "expression": "CustomerProfile.ConsentSMS = true AND CheckInSignals.TimeToDepartureHours BETWEEN 12 AND 24"
+          }
+        ]
+      },
+      {
+        "offerId": "TravelInsurance",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Insurance_CompareCard",
+            "expression": "CheckInSignals.CheckInStep = 'Extras' AND (FlightOperations.DelayRiskScore >= 0.25 OR ContextDerived.International = true)"
+          },
+          {
+            "treatmentId": "Treat_Insurance_EmailSummary",
+            "expression": "CustomerProfile.ConsentEmail = true AND Context.ActionOutcome = 'PurchaseSuccess'"
+          }
+        ]
+      },
+      {
+        "offerId": "DocumentAssist",
+        "treatments": [
+          {
+            "treatmentId": "Treat_DocAssist_ComplianceBanner",
+            "expression": "CheckInSignals.CheckInStep IN ['Start','SeatSelection'] AND TripContext.VisaRequired = true"
+          },
+          {
+            "treatmentId": "Treat_DocAssist_ChecklistModal",
+            "expression": "TripContext.DocVerificationStatus IN ['Pending','Unknown']"
+          }
+        ]
+      },
+      {
+        "offerId": "DutyFreePreorder",
+        "treatments": [
+          {
+            "treatmentId": "Treat_DutyFree_Carousel",
+            "expression": "CheckInSignals.CheckInStep = 'Extras' AND ContextDerived.DutyFreeRoute = true"
+          },
+          {
+            "treatmentId": "Treat_DutyFree_EmailWallet",
+            "expression": "CustomerProfile.ConsentEmail = true AND Context.ActionOutcome = 'PurchaseSuccess'"
+          }
+        ]
+      },
+      {
+        "offerId": "BNPLPayment",
+        "treatments": [
+          {
+            "treatmentId": "Treat_BNPL_Toggle",
+            "expression": "CheckInSignals.PaymentStepEntered = true AND PricingAndPartners.BasketTotal >= 60.00 AND PricingAndPartners.BNPLEligible = true"
+          },
+          {
+            "treatmentId": "Treat_BNPL_EmailSchedule",
+            "expression": "CustomerProfile.ConsentEmail = true AND Context.BNPLSelected = true"
+          }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate check-in session with customer, PNR/DCS, operations, pricing, and telemetry.",
+        "logic": [
+          "On CheckInStart: call PNR/DCS, inventory, pricing, consent services",
+          "Cache TTL = 180 seconds"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm online check-in intent and current step.",
+        "logic": [
+          "IF CheckInSignals.SessionEvent IN ['CheckInStart','CheckInResume']",
+          "OR CheckInSignals.CheckInStep IN ['SeatSelection','Extras','Review','Payment']",
+          "THEN Context.Intent = 'OnlineCheckIn'"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility and channel reachability.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Suppress commercial offers if disruption or compliance-only flow"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate individual offer eligibility and derive applicability reasons.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set Applicability reasons: ['AlreadyPurchased','InventoryLow','NotRelevant','CapacityLow']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions using NBA scoring.",
+        "logic": [
+          "Score = w1*AdaptivePropensity + w2*BusinessPriority + w3*ExpectedMargin + w4*ContextFit",
+          "BusinessPriority: {'DocumentAssist':100,'ExtraBaggage':85,'FastTrackSecurity':80,'SeatUpgrade':78,'PriorityBoarding':70,'LoungeAccess':65,'TravelInsurance':60,'DutyFreePreorder':55,'BNPLPayment':50}",
+          "ContextFit +10 when CheckInSignals.AbandonedAncillaryType matches offer"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select the best treatment for the current step.",
+        "logic": [
+          "Filter by treatment eligibility Treat_*",
+          "Preference order: InlineCard > Tile > Interstitial > Modal > Push/Email",
+          "Limit to one modal per session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Prevent fatigue and ensure compliance.",
+        "logic": [
+          "Apply GlobalFrequencyCaps",
+          "Apply OfferLevelCaps",
+          "Apply ContextualSuppressions",
+          "Apply RecencyRules"
+        ]
+      },
+      {
+        "id": "PricePersonalization",
+        "type": "Calculator",
+        "purpose": "Compute personalized price within guardrails.",
+        "logic": [
+          "OfferPrice = BasePrice × DynamicPriceMultiplier",
+          "Apply TierMaxDiscount & sensitivity guardrails"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment and capture outcomes in IH.",
+        "logic": [
+          "Persist IH with keys: CustomerID, PNR, OfferID, TreatmentID, Channel, Step, Outcome"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update propensities and suitability for check-in context.",
+        "logic": [
+          "Ingest impression/click/purchase outcomes",
+          "Update suitability features (e.g., 'Show at Extras step')"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": {
+        "maxPer7Days": 2,
+        "minIntervalHours": 24
+      },
+      "SMS_Push": {
+        "maxPer48Hours": 1,
+        "suppressWithinDisruptionHours": 12
+      },
+      "InSession_Modals": {
+        "maxPerSession": 1
+      },
+      "InlineCards_Banners": {
+        "maxDistinctOffersPerSession": 3,
+        "noRepeatWithinStep": true
+      }
+    },
+    "offerLevelCaps": [
+      {
+        "offerId": "SeatUpgrade",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "SeatSelected",
+          "PurchaseComplete"
+        ]
+      },
+      {
+        "offerId": "ExtraLegroomSeat",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "ExtraLegroomPurchased",
+          "SeatSelected"
+        ]
+      },
+      {
+        "offerId": "PriorityBoarding",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "FareIncludesPriority"
+        ]
+      },
+      {
+        "offerId": "FastTrackSecurity",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "OriginNotSupported"
+        ]
+      },
+      {
+        "offerId": "LoungeAccess",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "CapacityBelowThreshold",
+          "PurchaseComplete"
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "BaggagePurchased"
+        ]
+      },
+      {
+        "offerId": "TravelInsurance",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "InsurancePurchased"
+        ]
+      },
+      {
+        "offerId": "DocumentAssist",
+        "maxPerSession": 3,
+        "suppressOn": [
+          "DocVerificationStatus=Verified"
+        ],
+        "nonCommercial": true
+      },
+      {
+        "offerId": "DutyFreePreorder",
+        "maxPerSession": 1,
+        "suppressOn": [
+          "DepartureWithin6h"
+        ]
+      },
+      {
+        "offerId": "BNPLPayment",
+        "maxPerPaymentSession": 1,
+        "suppressOn": [
+          "DeclinedTwice"
+        ]
+      }
+    ],
+    "contextualSuppressions": [
+      {
+        "context": "DisruptionHandling",
+        "rule": "Prioritize service NBAs (DocumentAssist/Rebooking); suppress commercial ancillaries."
+      },
+      {
+        "context": "RegulatoryConstraint",
+        "rule": "Suppress BNPL/Insurance in prohibited markets."
+      },
+      {
+        "context": "AgentEscalation",
+        "rule": "Limit to one upsell per call; prioritize service actions first."
+      }
+    ],
+    "recencyRules": [
+      {
+        "ruleName": "AbandonmentRecoveryCheckIn",
+        "expression": "IF CheckInSignals.AbandonedAncillaryType != 'None' THEN allow one email follow-up within 72 hours; otherwise suppress."
+      }
+    ]
+  },
+  "channels": [
+    "Web",
+    "App",
+    "Agent",
+    "Kiosk",
+    "Email",
+    "SMS",
+    "Push"
+  ],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=BookingManagement, Group=OnlineCheckInUpsell. Tag DocumentAssist as service-type action.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement Elig_* rules under each Action.",
+    "arbitrationModel": "Combine adaptive propensity with business priority and expected margin; add context-fit boosts for behavioral signals.",
+    "treatmentsMapping": "Define Treat_* per channel and placement; map to action treatments and treatment-level eligibility.",
+    "contactPolicyConfig": "Configure global and action-level policies; apply before arbitration to prune action set.",
+    "dataFlows": "Real-time calls to PNR/DCS, inventory, pricing, consent; write IH outcomes to feed adaptive models."
+  }
+}
