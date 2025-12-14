@@ -1,0 +1,1232 @@
+{
+  "UseCase": "Airline Booking Abandonment Recovery NBA",
+  "Metadata": {
+    "version": "1.0",
+    "created": "2025-12-14",
+    "author": "M365 Copilot",
+    "context": "Pega Customer Decision Hub (NBA Designer + Strategies)",
+    "primaryChannel": [
+      "Web",
+      "Email",
+      "MobilePush",
+      "IVR",
+      "AgentAssist"
+    ]
+  },
+  "IssueAndGroups": {
+    "Issue": "RetentionAndRecovery",
+    "Groups": [
+      {
+        "name": "BookingRecovery",
+        "description": "Recover abandoned booking/payment",
+        "subGroups": [
+          "ShortHaul",
+          "LongHaul",
+          "PremiumCabin",
+          "General"
+        ]
+      },
+      {
+        "name": "ServiceReassurance",
+        "description": "Reduce friction via assisted checkout or documentation help",
+        "subGroups": [
+          "PaymentFriction",
+          "Compliance"
+        ]
+      },
+      {
+        "name": "UpgradeRescue",
+        "description": "Offer upgrades/flexibility to improve recovery odds",
+        "subGroups": [
+          "CabinUpgrade",
+          "FlexChange"
+        ]
+      },
+      {
+        "name": "AncillaryRescue",
+        "description": "Ancillary upsell (seats, bags, lounge)",
+        "subGroups": [
+          "SeatSelection",
+          "BaggageBundle",
+          "LoungePass"
+        ]
+      }
+    ]
+  },
+  "DataModels": {
+    "Customer": {
+      "class": "Org-Airline-Customer",
+      "attributes": [
+        {
+          "name": "CustomerID",
+          "type": "String",
+          "example": "CUST-102938"
+        },
+        {
+          "name": "Email",
+          "type": "String",
+          "example": "alex.lee@example.com"
+        },
+        {
+          "name": "Consent.MarketingEmail",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "Consent.Push",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "Consent.Phone",
+          "type": "Boolean",
+          "example": false
+        },
+        {
+          "name": "PreferredContactChannel",
+          "type": "Enum[String]",
+          "allowed": [
+            "Email",
+            "Push",
+            "Phone",
+            "Web"
+          ],
+          "example": "Email"
+        },
+        {
+          "name": "LoyaltyTier",
+          "type": "Enum[String]",
+          "allowed": [
+            "None",
+            "Silver",
+            "Gold",
+            "Platinum"
+          ],
+          "example": "Gold"
+        },
+        {
+          "name": "PriceSensitivityScore",
+          "type": "Decimal[0..1]",
+          "example": 0.72
+        },
+        {
+          "name": "PriceSensitivityThreshold",
+          "type": "Currency",
+          "example": 9000
+        },
+        {
+          "name": "RiskOfChurnScore",
+          "type": "Decimal[0..1]",
+          "example": 0.58
+        },
+        {
+          "name": "RegionSupportsAltPay",
+          "type": "Boolean",
+          "example": true
+        }
+      ]
+    },
+    "Session": {
+      "class": "Org-Airline-Session",
+      "attributes": [
+        {
+          "name": "SessionID",
+          "type": "String",
+          "example": "SESS-8f67-2025-12-14"
+        },
+        {
+          "name": "HasSelectedItinerary",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "PaymentStatus",
+          "type": "Enum[String]",
+          "allowed": [
+            "IN_PROGRESS",
+            "FAILED",
+            "ABANDONED",
+            "SUCCESS"
+          ],
+          "example": "FAILED"
+        },
+        {
+          "name": "AbandonReason",
+          "type": "Enum[String]",
+          "allowed": [
+            "3DS_FAILURE",
+            "OTP_TIMEOUT",
+            "NETWORK_ERROR",
+            "PRICE_SHOCK",
+            "UNKNOWN"
+          ],
+          "example": "OTP_TIMEOUT"
+        },
+        {
+          "name": "ReturnVisitWithinHours",
+          "type": "Integer",
+          "example": 6
+        },
+        {
+          "name": "Time.SinceAbandonmentHours",
+          "type": "Integer",
+          "example": 2
+        }
+      ]
+    },
+    "Itinerary": {
+      "class": "Org-Airline-Itinerary",
+      "attributes": [
+        {
+          "name": "Origin",
+          "type": "String[IATA-3]",
+          "example": "HYD"
+        },
+        {
+          "name": "Destination",
+          "type": "String[IATA-3]",
+          "example": "LHR"
+        },
+        {
+          "name": "DepartureDateTime",
+          "type": "DateTime",
+          "example": "2026-01-21T09:25"
+        },
+        {
+          "name": "Cabin",
+          "type": "Enum[String]",
+          "allowed": [
+            "Economy",
+            "PremiumEconomy",
+            "Business",
+            "First"
+          ],
+          "example": "Economy"
+        },
+        {
+          "name": "LayoverDurationMinutes",
+          "type": "Integer",
+          "example": 125
+        },
+        {
+          "name": "FareFamily",
+          "type": "Enum[String]",
+          "allowed": [
+            "Basic",
+            "Plus",
+            "Flex"
+          ],
+          "example": "Basic"
+        },
+        {
+          "name": "Route.Type",
+          "type": "Enum[String]",
+          "allowed": [
+            "ULTRA_SHORT",
+            "SHORT",
+            "MEDIUM",
+            "LONG"
+          ],
+          "example": "LONG"
+        }
+      ]
+    },
+    "Pricing": {
+      "class": "Org-Airline-Pricing",
+      "attributes": [
+        {
+          "name": "TotalFare",
+          "type": "Currency",
+          "example": 58400,
+          "currency": "INR"
+        },
+        {
+          "name": "FareHoldAvailable",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "UpgradeFareDelta",
+          "type": "Currency",
+          "example": 9000,
+          "currency": "INR"
+        },
+        {
+          "name": "Ancillary.SeatPrice",
+          "type": "Currency",
+          "example": 1200,
+          "currency": "INR"
+        },
+        {
+          "name": "Ancillary.BaggageBundlePrice",
+          "type": "Currency",
+          "example": 2500,
+          "currency": "INR"
+        }
+      ]
+    },
+    "Availability": {
+      "class": "Org-Airline-Availability",
+      "attributes": [
+        {
+          "name": "UpgradeSeatsAvailable",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "FareHoldCapacityRemaining",
+          "type": "Integer",
+          "example": 14
+        }
+      ]
+    },
+    "Payment": {
+      "class": "Org-Airline-Payment",
+      "attributes": [
+        {
+          "name": "GatewayErrorCode",
+          "type": "Enum[String]",
+          "allowed": [
+            "3DS_FAILURE",
+            "OTP_TIMEOUT",
+            "NETWORK_ERROR",
+            "FRAUD_SUSPECT",
+            "BLACKLIST",
+            "NONE"
+          ],
+          "example": "OTP_TIMEOUT"
+        },
+        {
+          "name": "AltPay.MethodsAvailable",
+          "type": "List[String]",
+          "example": [
+            "UPI",
+            "PayPal"
+          ]
+        }
+      ]
+    },
+    "Ancillary": {
+      "class": "Org-Airline-Ancillary",
+      "attributes": [
+        {
+          "name": "SeatSelected",
+          "type": "Boolean",
+          "example": false
+        },
+        {
+          "name": "BaggageAdded",
+          "type": "Boolean",
+          "example": false
+        }
+      ]
+    },
+    "Channel": {
+      "class": "Org-Airline-Channel",
+      "attributes": [
+        {
+          "name": "EmailReachable",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "PushReachable",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "WebAuthenticated",
+          "type": "Boolean",
+          "example": true
+        },
+        {
+          "name": "AgentAssistAvailable",
+          "type": "Boolean",
+          "example": true
+        }
+      ]
+    },
+    "DoNotDisturb": {
+      "class": "Org-Airline-DND",
+      "attributes": [
+        {
+          "name": "CurrentlyActive",
+          "type": "Boolean",
+          "example": false
+        },
+        {
+          "name": "QuietHoursPush",
+          "type": "String",
+          "example": "22:00-07:00"
+        }
+      ]
+    },
+    "IH": {
+      "class": "Org-Airline-IH",
+      "attributes": [
+        {
+          "name": "IH.Count(BookingRecovery, 48h)",
+          "type": "Integer",
+          "example": 1
+        },
+        {
+          "name": "IH.LastOfferGroup",
+          "type": "String",
+          "example": "UpgradeRescue"
+        },
+        {
+          "name": "IH.LastOutcome(AlternativePayment_Methods, 24h)",
+          "type": "Enum[String]",
+          "allowed": [
+            "Presented",
+            "Accepted",
+            "Rejected",
+            "Ignored",
+            "None"
+          ],
+          "example": "Rejected"
+        }
+      ]
+    }
+  },
+  "Offers": [
+    {
+      "name": "FareHold48H",
+      "group": "BookingRecovery",
+      "objective": "Hold fare for 48 hours to reduce price anxiety and recover booking",
+      "treatments": [
+        "Email_HTML_FareHold48H_Personalized",
+        "Push_FareHold48H_Short",
+        "WebBanner_FareHold48H",
+        "AgentScript_FareHold48H"
+      ]
+    },
+    {
+      "name": "PaymentRetry_Link",
+      "group": "BookingRecovery",
+      "objective": "Provide secure deeplink to resume payment",
+      "treatments": [
+        "Email_PaymentRetry_DeepLink",
+        "Push_PaymentRetry",
+        "IVR_Offer_PaymentRetry"
+      ]
+    },
+    {
+      "name": "AlternativePayment_Methods",
+      "group": "BookingRecovery",
+      "objective": "Offer UPI/PayPal/ApplePay when gateway fails",
+      "treatments": [
+        "Email_AltPay_UPI_PayPal",
+        "WebBanner_AltPay",
+        "AgentScript_AltPayExplain"
+      ]
+    },
+    {
+      "name": "AssistedCheckout_AgentCallback",
+      "group": "ServiceReassurance",
+      "objective": "Agent assistance to complete checkout",
+      "treatments": [
+        "Email_CallbackCTA",
+        "IVR_Transfer_QueuePriority",
+        "AgentScript_AssistedCheckout"
+      ]
+    },
+    {
+      "name": "DocumentationHelp_Bot",
+      "group": "ServiceReassurance",
+      "objective": "Self-serve doc checklist and chat support",
+      "treatments": [
+        "WebChat_DocHelp",
+        "Email_DocChecklist",
+        "Push_DocHelp"
+      ]
+    },
+    {
+      "name": "CabinUpgrade_Flex",
+      "group": "UpgradeRescue",
+      "objective": "Targeted cabin upgrade to increase recovery",
+      "treatments": [
+        "Email_Upgrade_Targeted",
+        "Push_UpgradeLimitedTime",
+        "WebBanner_UpgradeTeaser"
+      ]
+    },
+    {
+      "name": "ChangeFlexibility_AddOn",
+      "group": "UpgradeRescue",
+      "objective": "Add flexibility option to reduce purchase hesitation",
+      "treatments": [
+        "Email_FlexChangeAddOn",
+        "Push_FlexChange",
+        "AgentScript_FlexExplainer"
+      ]
+    },
+    {
+      "name": "SeatSelection_Discount",
+      "group": "AncillaryRescue",
+      "objective": "Discounted seat selection to increase attach rate",
+      "treatments": [
+        "Email_Seat20Off",
+        "Push_SeatReminder_Rich",
+        "WebInline_SeatTeaser"
+      ]
+    },
+    {
+      "name": "BaggageBundle_Saver",
+      "group": "AncillaryRescue",
+      "objective": "Savings on baggage bundle",
+      "treatments": [
+        "Email_BagBundle15Off",
+        "Push_BagReminder",
+        "WebBanner_BagBundle"
+      ]
+    },
+    {
+      "name": "LoungeDayPass_Promo",
+      "group": "AncillaryRescue",
+      "objective": "Promo on lounge pass for eligible customers",
+      "treatments": [
+        "Email_Lounge10Off",
+        "Push_LoungeTeaser",
+        "AgentScript_LoungePitch"
+      ]
+    }
+  ],
+  "CommonEligibility": {
+    "whenRule": "When_CommonEligibility_RetentionRecovery",
+    "expression": "(Customer.IsAuthenticated = true) AND (Session.HasSelectedItinerary = true) AND (Session.PaymentStatus IN (\"ABANDONED\",\"FAILED\")) AND (DoNotDisturb.CurrentlyActive = false) AND (IH.Count(BookingRecovery, 48h) < 2)",
+    "conditions": [
+      {
+        "table": "Customer",
+        "lhs": "IsAuthenticated",
+        "operator": "=",
+        "rhs": true
+      },
+      {
+        "table": "Session",
+        "lhs": "HasSelectedItinerary",
+        "operator": "=",
+        "rhs": true
+      },
+      {
+        "table": "Session",
+        "lhs": "PaymentStatus",
+        "operator": "IN",
+        "rhs": [
+          "ABANDONED",
+          "FAILED"
+        ]
+      },
+      {
+        "table": "DoNotDisturb",
+        "lhs": "CurrentlyActive",
+        "operator": "=",
+        "rhs": false
+      },
+      {
+        "table": "IH",
+        "lhs": "Count(BookingRecovery, 48h)",
+        "operator": "<",
+        "rhs": 2
+      }
+    ],
+    "suitability": {
+      "consentExpression": "(Customer.Consent.MarketingEmail = true OR Customer.Consent.Push = true OR Customer.Consent.Phone = true)",
+      "fraudCheck": "(Fraud.RiskScore < 0.7)",
+      "complianceCheck": "(Compliance.Status != \"Blocked\")"
+    }
+  },
+  "OfferEligibility": {
+    "FareHold48H": {
+      "whenRule": "When_FareHold_Eligible",
+      "expression": "(Pricing.FareHoldAvailable = true) AND (Availability.FareHoldCapacityRemaining > 0) AND (Time.SinceAbandonmentHours <= 48) AND ((Customer.PriceSensitivityScore >= 0.6) OR (Customer.LoyaltyTier IN (\"Gold\",\"Platinum\")))",
+      "conditions": [
+        {
+          "table": "Pricing",
+          "lhs": "FareHoldAvailable",
+          "operator": "=",
+          "rhs": true
+        },
+        {
+          "table": "Availability",
+          "lhs": "FareHoldCapacityRemaining",
+          "operator": ">",
+          "rhs": 0
+        },
+        {
+          "table": "Session",
+          "lhs": "Time.SinceAbandonmentHours",
+          "operator": "<=",
+          "rhs": 48
+        },
+        {
+          "table": "Customer",
+          "lhs": "PriceSensitivityScore",
+          "operator": ">=",
+          "rhs": 0.6
+        },
+        {
+          "table": "Customer",
+          "lhs": "LoyaltyTier",
+          "operator": "IN",
+          "rhs": [
+            "Gold",
+            "Platinum"
+          ]
+        }
+      ]
+    },
+    "PaymentRetry_Link": {
+      "whenRule": "When_PaymentRetry_Eligible",
+      "expression": "(Session.PaymentStatus IN (\"FAILED\",\"ABANDONED\")) AND (Payment.GatewayErrorCode NOT IN (\"FRAUD_SUSPECT\",\"BLACKLIST\")) AND (IH.LastOutcome(PaymentRetry_Link, 12h) != \"Accepted\")",
+      "conditions": [
+        {
+          "table": "Session",
+          "lhs": "PaymentStatus",
+          "operator": "IN",
+          "rhs": [
+            "FAILED",
+            "ABANDONED"
+          ]
+        },
+        {
+          "table": "Payment",
+          "lhs": "GatewayErrorCode",
+          "operator": "NOT IN",
+          "rhs": [
+            "FRAUD_SUSPECT",
+            "BLACKLIST"
+          ]
+        },
+        {
+          "table": "IH",
+          "lhs": "LastOutcome(PaymentRetry_Link, 12h)",
+          "operator": "!=",
+          "rhs": "Accepted"
+        }
+      ]
+    },
+    "AlternativePayment_Methods": {
+      "whenRule": "When_AltPay_Eligible",
+      "expression": "(Session.PaymentStatus = \"FAILED\") AND (Payment.GatewayErrorCode IN (\"3DS_FAILURE\",\"OTP_TIMEOUT\",\"NETWORK_ERROR\")) AND (Payment.AltPay.MethodsAvailable CONTAINS ANY (\"UPI\",\"PayPal\",\"ApplePay\")) AND (Customer.RegionSupportsAltPay = true) AND (IH.LastOutcome(AlternativePayment_Methods, 24h) != \"Accepted\")",
+      "conditions": [
+        {
+          "table": "Session",
+          "lhs": "PaymentStatus",
+          "operator": "=",
+          "rhs": "FAILED"
+        },
+        {
+          "table": "Payment",
+          "lhs": "GatewayErrorCode",
+          "operator": "IN",
+          "rhs": [
+            "3DS_FAILURE",
+            "OTP_TIMEOUT",
+            "NETWORK_ERROR"
+          ]
+        },
+        {
+          "table": "Payment",
+          "lhs": "AltPay.MethodsAvailable",
+          "operator": "CONTAINS_ANY",
+          "rhs": [
+            "UPI",
+            "PayPal",
+            "ApplePay"
+          ]
+        },
+        {
+          "table": "Customer",
+          "lhs": "RegionSupportsAltPay",
+          "operator": "=",
+          "rhs": true
+        },
+        {
+          "table": "IH",
+          "lhs": "LastOutcome(AlternativePayment_Methods, 24h)",
+          "operator": "!=",
+          "rhs": "Accepted"
+        }
+      ]
+    },
+    "AssistedCheckout_AgentCallback": {
+      "whenRule": "When_AssistedCheckout_Eligible",
+      "expression": "(Session.PaymentStatus IN (\"FAILED\",\"ABANDONED\")) AND (Channel.AgentAssistAvailable = true) AND (Customer.PreferredContactChannel = \"Phone\") AND (Customer.Consent.Phone = true)",
+      "conditions": [
+        {
+          "table": "Session",
+          "lhs": "PaymentStatus",
+          "operator": "IN",
+          "rhs": [
+            "FAILED",
+            "ABANDONED"
+          ]
+        },
+        {
+          "table": "Channel",
+          "lhs": "AgentAssistAvailable",
+          "operator": "=",
+          "rhs": true
+        },
+        {
+          "table": "Customer",
+          "lhs": "PreferredContactChannel",
+          "operator": "=",
+          "rhs": "Phone"
+        },
+        {
+          "table": "Customer",
+          "lhs": "Consent.Phone",
+          "operator": "=",
+          "rhs": true
+        }
+      ]
+    },
+    "DocumentationHelp_Bot": {
+      "whenRule": "When_DocHelp_Eligible",
+      "expression": "(Compliance.DocumentCheckRequired = true) AND (DocCheck.Status = \"INCOMPLETE\") AND (Channel.WebAuthenticated = true)",
+      "conditions": [
+        {
+          "table": "Compliance",
+          "lhs": "DocumentCheckRequired",
+          "operator": "=",
+          "rhs": true
+        },
+        {
+          "table": "DocCheck",
+          "lhs": "Status",
+          "operator": "=",
+          "rhs": "INCOMPLETE"
+        },
+        {
+          "table": "Channel",
+          "lhs": "WebAuthenticated",
+          "operator": "=",
+          "rhs": true
+        }
+      ]
+    },
+    "CabinUpgrade_Flex": {
+      "whenRule": "When_CabinUpgrade_Eligible",
+      "expression": "(Itinerary.Cabin = \"Economy\") AND (Availability.UpgradeSeatsAvailable = true) AND ((Pricing.UpgradeFareDelta <= Customer.PriceSensitivityThreshold) OR (Customer.LoyaltyTier IN (\"Gold\",\"Platinum\")))",
+      "conditions": [
+        {
+          "table": "Itinerary",
+          "lhs": "Cabin",
+          "operator": "=",
+          "rhs": "Economy"
+        },
+        {
+          "table": "Availability",
+          "lhs": "UpgradeSeatsAvailable",
+          "operator": "=",
+          "rhs": true
+        },
+        {
+          "table": "Pricing",
+          "lhs": "UpgradeFareDelta",
+          "operator": "<=",
+          "rhs": {
+            "ref": "Customer.PriceSensitivityThreshold"
+          }
+        },
+        {
+          "table": "Customer",
+          "lhs": "LoyaltyTier",
+          "operator": "IN",
+          "rhs": [
+            "Gold",
+            "Platinum"
+          ]
+        }
+      ]
+    },
+    "ChangeFlexibility_AddOn": {
+      "whenRule": "When_FlexChange_Eligible",
+      "expression": "(Itinerary.FareFamily NOT IN (\"Flex\",\"Plus\")) AND (Customer.RiskOfChurnScore >= 0.5) AND (Pricing.TotalFare >= 25000)",
+      "conditions": [
+        {
+          "table": "Itinerary",
+          "lhs": "FareFamily",
+          "operator": "NOT IN",
+          "rhs": [
+            "Flex",
+            "Plus"
+          ]
+        },
+        {
+          "table": "Customer",
+          "lhs": "RiskOfChurnScore",
+          "operator": ">=",
+          "rhs": 0.5
+        },
+        {
+          "table": "Pricing",
+          "lhs": "TotalFare",
+          "operator": ">=",
+          "rhs": 25000
+        }
+      ]
+    },
+    "SeatSelection_Discount": {
+      "whenRule": "When_SeatDiscount_Eligible",
+      "expression": "(Ancillary.SeatSelected = false) AND (Itinerary.Cabin = \"Economy\") AND (Route.Type IN (\"SHORT\",\"MEDIUM\",\"LONG\")) AND (Pricing.Ancillary.SeatPrice > 0)",
+      "conditions": [
+        {
+          "table": "Ancillary",
+          "lhs": "SeatSelected",
+          "operator": "=",
+          "rhs": false
+        },
+        {
+          "table": "Itinerary",
+          "lhs": "Cabin",
+          "operator": "=",
+          "rhs": "Economy"
+        },
+        {
+          "table": "Itinerary",
+          "lhs": "Route.Type",
+          "operator": "IN",
+          "rhs": [
+            "SHORT",
+            "MEDIUM",
+            "LONG"
+          ]
+        },
+        {
+          "table": "Pricing",
+          "lhs": "Ancillary.SeatPrice",
+          "operator": ">",
+          "rhs": 0
+        }
+      ]
+    },
+    "BaggageBundle_Saver": {
+      "whenRule": "When_BagBundle_Eligible",
+      "expression": "(Ancillary.BaggageAdded = false) AND (Customer.TravelHistory.AverageBagCount >= 1) AND (Pricing.Ancillary.BaggageBundlePrice > 0)",
+      "conditions": [
+        {
+          "table": "Ancillary",
+          "lhs": "BaggageAdded",
+          "operator": "=",
+          "rhs": false
+        },
+        {
+          "table": "Customer",
+          "lhs": "TravelHistory.AverageBagCount",
+          "operator": ">=",
+          "rhs": 1
+        },
+        {
+          "table": "Pricing",
+          "lhs": "Ancillary.BaggageBundlePrice",
+          "operator": ">",
+          "rhs": 0
+        }
+      ]
+    },
+    "LoungeDayPass_Promo": {
+      "whenRule": "When_LoungePromo_Eligible",
+      "expression": "(Customer.LoyaltyTier IN (\"Silver\",\"Gold\",\"Platinum\")) AND (Itinerary.LayoverDurationMinutes >= 90) AND (Itinerary.Route.Type IN (\"MEDIUM\",\"LONG\"))",
+      "conditions": [
+        {
+          "table": "Customer",
+          "lhs": "LoyaltyTier",
+          "operator": "IN",
+          "rhs": [
+            "Silver",
+            "Gold",
+            "Platinum"
+          ]
+        },
+        {
+          "table": "Itinerary",
+          "lhs": "LayoverDurationMinutes",
+          "operator": ">=",
+          "rhs": 90
+        },
+        {
+          "table": "Itinerary",
+          "lhs": "Route.Type",
+          "operator": "IN",
+          "rhs": [
+            "MEDIUM",
+            "LONG"
+          ]
+        }
+      ]
+    }
+  },
+  "TreatmentEligibility": {
+    "FareHold48H": {
+      "Email_HTML_FareHold48H_Personalized": {
+        "whenRule": "When_Treatment_Email_FareHold_Personalized",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true) AND (ContactPolicy.EmailFrequencyCap_Remaining > 0)"
+      },
+      "Push_FareHold48H_Short": {
+        "whenRule": "When_Treatment_Push_FareHold_Short",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "WebBanner_FareHold48H": {
+        "whenRule": "When_Treatment_Web_FareHold",
+        "expression": "(Channel.WebAuthenticated = true) AND (Session.ReturnVisitWithinHours <= 48)"
+      },
+      "AgentScript_FareHold48H": {
+        "whenRule": "When_Treatment_Agent_FareHold",
+        "expression": "(Channel.AgentAssistAvailable = true) AND (Customer.PreferredContactChannel = \"Phone\")"
+      }
+    },
+    "PaymentRetry_Link": {
+      "Email_PaymentRetry_DeepLink": {
+        "whenRule": "When_Treatment_Email_PaymentRetry",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true)"
+      },
+      "Push_PaymentRetry": {
+        "whenRule": "When_Treatment_Push_PaymentRetry",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "IVR_Offer_PaymentRetry": {
+        "whenRule": "When_Treatment_IVR_PaymentRetry",
+        "expression": "(Customer.Consent.Phone = true)"
+      }
+    },
+    "AlternativePayment_Methods": {
+      "Email_AltPay_UPI_PayPal": {
+        "whenRule": "When_Treatment_Email_AltPay",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true) AND (Customer.RegionSupportsAltPay = true)"
+      },
+      "WebBanner_AltPay": {
+        "whenRule": "When_Treatment_Web_AltPay",
+        "expression": "(Channel.WebAuthenticated = true) AND (Payment.GatewayErrorCode IN (\"3DS_FAILURE\",\"OTP_TIMEOUT\",\"NETWORK_ERROR\"))"
+      },
+      "AgentScript_AltPayExplain": {
+        "whenRule": "When_Treatment_Agent_AltPay",
+        "expression": "(Channel.AgentAssistAvailable = true) AND (Customer.Consent.Phone = true)"
+      }
+    },
+    "AssistedCheckout_AgentCallback": {
+      "Email_CallbackCTA": {
+        "whenRule": "When_Treatment_Email_AgentCallback",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true)"
+      },
+      "IVR_Transfer_QueuePriority": {
+        "whenRule": "When_Treatment_IVR_AgentCallback",
+        "expression": "(Customer.Consent.Phone = true)"
+      },
+      "AgentScript_AssistedCheckout": {
+        "whenRule": "When_Treatment_Agent_AssistedCheckout",
+        "expression": "(Channel.AgentAssistAvailable = true)"
+      }
+    },
+    "DocumentationHelp_Bot": {
+      "WebChat_DocHelp": {
+        "whenRule": "When_Treatment_Web_DocHelp",
+        "expression": "(Channel.WebAuthenticated = true)"
+      },
+      "Email_DocChecklist": {
+        "whenRule": "When_Treatment_Email_DocHelp",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true)"
+      },
+      "Push_DocHelp": {
+        "whenRule": "When_Treatment_Push_DocHelp",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      }
+    },
+    "CabinUpgrade_Flex": {
+      "Email_Upgrade_Targeted": {
+        "whenRule": "When_Treatment_Email_Upgrade",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true)"
+      },
+      "Push_UpgradeLimitedTime": {
+        "whenRule": "When_Treatment_Push_Upgrade",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "WebBanner_UpgradeTeaser": {
+        "whenRule": "When_Treatment_Web_Upgrade",
+        "expression": "(Channel.WebAuthenticated = true)"
+      }
+    },
+    "ChangeFlexibility_AddOn": {
+      "Email_FlexChangeAddOn": {
+        "whenRule": "When_Treatment_Email_FlexChange",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true)"
+      },
+      "Push_FlexChange": {
+        "whenRule": "When_Treatment_Push_FlexChange",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "AgentScript_FlexExplainer": {
+        "whenRule": "When_Treatment_Agent_FlexChange",
+        "expression": "(Channel.AgentAssistAvailable = true)"
+      }
+    },
+    "SeatSelection_Discount": {
+      "Email_Seat20Off": {
+        "whenRule": "When_Treatment_Email_SeatDiscount",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true) AND (Pricing.Ancillary.SeatPrice > 0)"
+      },
+      "Push_SeatReminder_Rich": {
+        "whenRule": "When_Treatment_Push_SeatReminder",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "WebInline_SeatTeaser": {
+        "whenRule": "When_Treatment_Web_SeatTeaser",
+        "expression": "(Channel.WebAuthenticated = true) AND (Session.ReturnVisitWithinHours <= 24)"
+      }
+    },
+    "BaggageBundle_Saver": {
+      "Email_BagBundle15Off": {
+        "whenRule": "When_Treatment_Email_BagBundle",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true) AND (Pricing.Ancillary.BaggageBundlePrice > 0)"
+      },
+      "Push_BagReminder": {
+        "whenRule": "When_Treatment_Push_BagBundle",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "WebBanner_BagBundle": {
+        "whenRule": "When_Treatment_Web_BagBundle",
+        "expression": "(Channel.WebAuthenticated = true)"
+      }
+    },
+    "LoungeDayPass_Promo": {
+      "Email_Lounge10Off": {
+        "whenRule": "When_Treatment_Email_Lounge",
+        "expression": "(Channel.EmailReachable = true) AND (Customer.Consent.MarketingEmail = true)"
+      },
+      "Push_LoungeTeaser": {
+        "whenRule": "When_Treatment_Push_Lounge",
+        "expression": "(Channel.PushReachable = true) AND (Customer.Consent.Push = true) AND (DoNotDisturb.CurrentlyActive = false)"
+      },
+      "AgentScript_LoungePitch": {
+        "whenRule": "When_Treatment_Agent_Lounge",
+        "expression": "(Channel.AgentAssistAvailable = true)"
+      }
+    }
+  },
+  "StrategyDesign": {
+    "name": "Strategy_Retention_Recovery_v1",
+    "components": [
+      {
+        "type": "DataImport",
+        "inputs": [
+          "Customer",
+          "Session",
+          "Itinerary",
+          "Pricing",
+          "Availability",
+          "Payment",
+          "IH"
+        ],
+        "logic": "Join Customer by CustomerID; attach Session/Itinerary from event; hydrate Pricing/Availability via Data Pages"
+      },
+      {
+        "type": "SubStrategy",
+        "name": "SS_BookingRecovery",
+        "logic": "Filter Offers by OfferEligibility; branch to TreatmentEligibility per channel"
+      },
+      {
+        "type": "SubStrategy",
+        "name": "SS_ServiceReassurance",
+        "logic": "Assist flows for friction; agent or bot treatments"
+      },
+      {
+        "type": "SubStrategy",
+        "name": "SS_UpgradeRescue",
+        "logic": "Upgrade and flexibility actions"
+      },
+      {
+        "type": "SubStrategy",
+        "name": "SS_AncillaryRescue",
+        "logic": "Seat, baggage, lounge actions"
+      },
+      {
+        "type": "AdaptiveModels",
+        "models": [
+          "AM_FareHold",
+          "AM_AltPay",
+          "AM_PaymentRetry",
+          "AM_UpgradeFlex",
+          "AM_SeatDiscount",
+          "AM_BagBundle",
+          "AM_LoungePass"
+        ],
+        "inputs": [
+          "PriceSensitivityScore",
+          "Time.SinceAbandonmentHours",
+          "Route.Type",
+          "LoyaltyTier",
+          "ChannelReachability",
+          "RecentIHOutcomes"
+        ],
+        "output": "Propensity[0..1]"
+      },
+      {
+        "type": "SetProperty",
+        "name": "ExpectedValue",
+        "formula": "(Propensity * Offer.Margin) - Treatment.Cost + FutureValue_LoyaltyDelta"
+      },
+      {
+        "type": "Constraints",
+        "checks": [
+          "ContactPolicy",
+          "Inventory",
+          "Compliance",
+          "Fraud"
+        ],
+        "logic": "Suppress when caps exceeded, capacity=0, consent false, DND true, or fraud high"
+      },
+      {
+        "type": "Switch",
+        "name": "BusinessRuleOverlay",
+        "rules": [
+          "IF Payment.GatewayErrorCode IN (3DS_FAILURE, OTP_TIMEOUT, NETWORK_ERROR) THEN prefer AlternativePayment_Methods",
+          "ELSE IF FareHoldAvailable AND PriceSensitivityScore >= 0.6 THEN prefer FareHold48H",
+          "ELSE IF UpgradeSeatsAvailable AND LoyaltyTier IN (Gold, Platinum) THEN consider CabinUpgrade_Flex",
+          "ELSE consider PaymentRetry_Link or highest ExpectedValue ancillary"
+        ]
+      },
+      {
+        "type": "Prioritize",
+        "rankingFormula": "(0.6 * Propensity) + (0.3 * ExpectedValue_Normalized) + (0.1 * BusinessPriority)"
+      },
+      {
+        "type": "BestAction",
+        "selection": "Top 1 per channel; pick global top"
+      },
+      {
+        "type": "ChannelSelection",
+        "logic": "Prefer invoker channel (Web/Push) in RT; fallback to Email; route Agent for high friction/value"
+      },
+      {
+        "type": "OutcomeCapture",
+        "logic": "Write IH (Presented/Accepted/Rejected/Ignored); train adaptive models via response events"
+      },
+      {
+        "type": "ABTesting",
+        "logic": "Treatment variants; log variant IDs in IH"
+      }
+    ],
+    "arbitration": {
+      "primaryObjective": "Recover booking",
+      "rankScoreFormula": "(0.6 * Propensity) + (0.3 * ExpectedValue_Normalized) + (0.1 * BusinessPriority)"
+    }
+  },
+  "DataFlows": [
+    {
+      "name": "DF_RT_Ingest_CheckoutEvents",
+      "mode": "RealTime",
+      "source": [
+        "Kafka: flight-checkout-events",
+        "REST: payment-status"
+      ],
+      "steps": [
+        "Parse event",
+        "Map session attributes",
+        "Join profile by CustomerID",
+        "Compute AbandonmentSignal: (Exit AND NoSuccess AND Inactivity >= 10min)",
+        "Route to RT Decision DF if signal true"
+      ]
+    },
+    {
+      "name": "DF_RT_Decide_RecoveryNBA",
+      "mode": "RealTime",
+      "steps": [
+        "Load Customer & Session context",
+        "Invoke Strategy_Retention_Recovery_v1",
+        "Apply Engagement Policies & Constraints",
+        "Send Action to channels",
+        "Write IH: OfferPresented",
+        "Schedule follow-up in 24h if no response"
+      ]
+    },
+    {
+      "name": "DF_Batch_AbandonmentSweep",
+      "mode": "Batch (Daily)",
+      "steps": [
+        "Identity Resolution (anonymous to known links)",
+        "Eligibility Filter (common + offer-level)",
+        "Propensity Scoring (offline features)",
+        "Invoke Strategy_Retention_Recovery_v1 (batch channel preference: Email)",
+        "Write IH & Outcomes"
+      ]
+    },
+    {
+      "name": "DF_Refresh_PricingAndAvailability",
+      "mode": "Scheduled (Hourly)",
+      "steps": [
+        "Pull Pricing/Availability",
+        "Update Decision Data Pages cache"
+      ]
+    },
+    {
+      "name": "DF_RT_ResponseCapture",
+      "mode": "RealTime",
+      "steps": [
+        "Capture clicks/purchases",
+        "Update IH outcomes",
+        "Train adaptive models",
+        "Update fatigue counters"
+      ]
+    }
+  ],
+  "ContactPolicies": {
+    "Global": {
+      "MaxRecoveryContacts_48h": 2,
+      "MinHoursBetweenRecoveryContacts": 12,
+      "QuietHoursPush": "22:00-07:00",
+      "RespectConsents": true
+    },
+    "ChannelCaps": {
+      "EmailPerWeek_Total": 3,
+      "BookingRecovery_EmailCap_48h": 1,
+      "PushPer48h_Total": 2,
+      "AgentCallbackPerAbandonment": 1,
+      "WebReShowSameOfferPerSession": 1
+    },
+    "OfferLevel": {
+      "FareHold48H": {
+        "frequency": "once_per_itinerary",
+        "inventory": "suppress_if_FareHoldCapacityRemaining=0"
+      },
+      "AlternativePayment_Methods": {
+        "suppression": "suppress_after_acceptance_or_explicit_rejection"
+      },
+      "CabinUpgrade_Flex": {
+        "constraint": "do_not_present_if_fare_lock_invalidates_benefits"
+      }
+    },
+    "IHDriven": {
+      "BookingRecoveryContactsLast48h_LT": 2,
+      "SuppressRepeatSameSession": true,
+      "NoRePresentIfRejectedLast24h": true
+    }
+  },
+  "RulePaths": {
+    "Eligibility": {
+      "basePath": "RetentionAndRecovery/<Group>/<Offer>/Eligibility/",
+      "examples": [
+        "RetentionAndRecovery/BookingRecovery/FareHold48H/Eligibility/When_FareHold_Eligible",
+        "RetentionAndRecovery/BookingRecovery/AlternativePayment_Methods/Eligibility/When_AltPay_Eligible"
+      ]
+    },
+    "TreatmentApplicability": {
+      "basePath": "RetentionAndRecovery/<Group>/<Offer>/Treatments/<Treatment>/Applicability/",
+      "examples": [
+        "RetentionAndRecovery/BookingRecovery/FareHold48H/Treatments/Email_HTML_FareHold48H_Personalized/Applicability/When_Treatment_Email_FareHold_Personalized",
+        "RetentionAndRecovery/BookingRecovery/AlternativePayment_Methods/Treatments/WebBanner_AltPay/Applicability/When_Treatment_Web_AltPay"
+      ]
+    }
+  },
+  "KPIs": [
+    "Abandonment Recovery Rate",
+    "Recovered Revenue",
+    "Time-to-Recovery",
+    "Ancillary Attach Rate",
+    "Upgrade Attach Rate",
+    "Opt-out/Fatigue rate",
+    "DND violations (target: 0)",
+    "Model health: response volume, success bias, stability"
+  ]
+}
