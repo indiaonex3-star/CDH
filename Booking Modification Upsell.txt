@@ -1,0 +1,151 @@
+{
+  "useCase": {
+    "name": "Booking Modification Upsell",
+    "client": "Airline (e.g., Transavia)",
+    "domain": "Pega Customer Decision Hub",
+    "description": "Offer relevant ancillary products to customers during booking modification using Next-Best-Action decisioning."
+  },
+  "issueAndGroup": {
+    "issue": "Grow",
+    "group": "Ancillary Revenue Optimization"
+  },
+  "dataModels": {
+    "customerProfile": {
+      "CustomerID": "CUST987654",
+      "LoyaltyTier": "Silver",
+      "TotalFlightsLast12M": 8,
+      "AvgSpend": 220.75,
+      "PreferredSeatType": "Aisle",
+      "HasCheckedBagHistory": true,
+      "CustomerValueScore": 0.78
+    },
+    "bookingDetails": {
+      "BookingID": "BK123456",
+      "BookingStatus": "Confirmed",
+      "FlightDate": "2025-01-20",
+      "DaysToDeparture": 10,
+      "FareClass": "Basic",
+      "RouteType": "International",
+      "FlightDurationHours": 4.5,
+      "HasSeatSelected": false,
+      "HasExtraBag": false,
+      "HasMeal": false
+    },
+    "interactionContext": {
+      "InteractionType": "BookingModification",
+      "Channel": "Web",
+      "DeviceType": "Mobile",
+      "IsInbound": true
+    },
+    "predictiveData": {
+      "SeatUpgradePropensity": 0.72,
+      "BaggageUpsellPropensity": 0.65,
+      "MealUpsellPropensity": 0.4
+    }
+  },
+  "offers": [
+    {
+      "offerCode": "ANC_SEAT",
+      "offerName": "Preferred Seat Upgrade",
+      "eligibilityRule": {
+        "whenRuleName": "When_SeatUpgrade_Eligible",
+        "logic": "HasSeatSelected == false AND FareClass IN ('Basic','Light') AND SeatUpgradePropensity >= 0.6 AND RouteType == 'International'"
+      },
+      "treatments": [
+        {
+          "treatmentCode": "TREAT_SEAT_WEB",
+          "channel": "Web",
+          "eligibilityRule": {
+            "whenRuleName": "When_SeatUpgrade_Web_Eligible",
+            "logic": "Channel == 'Web'"
+          }
+        },
+        {
+          "treatmentCode": "TREAT_SEAT_APP",
+          "channel": "MobileApp",
+          "eligibilityRule": {
+            "whenRuleName": "When_SeatUpgrade_App_Eligible",
+            "logic": "Channel == 'MobileApp' AND PushConsent == true"
+          }
+        }
+      ]
+    },
+    {
+      "offerCode": "ANC_BAG",
+      "offerName": "Extra Baggage Purchase",
+      "eligibilityRule": {
+        "whenRuleName": "When_ExtraBaggage_Eligible",
+        "logic": "HasExtraBag == false AND HasCheckedBagHistory == true AND DaysToDeparture >= 5 AND BaggageUpsellPropensity >= 0.5"
+      },
+      "treatments": [
+        {
+          "treatmentCode": "TREAT_BAG_WEB",
+          "channel": "Web"
+        },
+        {
+          "treatmentCode": "TREAT_BAG_EMAIL",
+          "channel": "Email",
+          "eligibilityRule": {
+            "whenRuleName": "When_Baggage_Email_Eligible",
+            "logic": "EmailConsent == true AND DaysToDeparture >= 7"
+          }
+        }
+      ]
+    },
+    {
+      "offerCode": "ANC_MEAL",
+      "offerName": "Pre-Order Meal",
+      "eligibilityRule": {
+        "whenRuleName": "When_MealPreorder_Eligible",
+        "logic": "RouteType == 'International' AND HasMeal == false AND MealUpsellPropensity >= 0.35 AND FlightDurationHours >= 3"
+      },
+      "treatments": [
+        {
+          "treatmentCode": "TREAT_MEAL_WEB",
+          "channel": "Web"
+        },
+        {
+          "treatmentCode": "TREAT_MEAL_APP",
+          "channel": "MobileApp"
+        }
+      ]
+    },
+    {
+      "offerCode": "ANC_FAST",
+      "offerName": "Fast Track Boarding",
+      "eligibilityRule": {
+        "whenRuleName": "When_FastTrack_Eligible",
+        "logic": "LoyaltyTier IN ('Silver','Gold','Platinum') AND FareClass != 'Business' AND CustomerValueScore >= 0.7"
+      },
+      "treatments": [
+        {
+          "treatmentCode": "TREAT_FAST_WEB",
+          "channel": "Web"
+        },
+        {
+          "treatmentCode": "TREAT_FAST_EMAIL",
+          "channel": "Email"
+        }
+      ]
+    }
+  ],
+  "commonEligibility": {
+    "whenRuleName": "When_BookingModification_Upsell_Eligible",
+    "logic": "InteractionType == 'BookingModification' AND DaysToDeparture > 2 AND BookingStatus == 'Confirmed'"
+  },
+  "arbitration": {
+    "strategy": "Weighted Score",
+    "formula": "(Propensity * 0.5) + (CustomerValueScore * 0.3) + (MarginScore * 0.2)"
+  },
+  "contactPolicies": {
+    "actionLevel": {
+      "maxSameOfferPerBooking": 1,
+      "maxSameOfferPerSession": 1
+    },
+    "customerLevel": {
+      "maxAncillaryOffersPerDay": 3,
+      "maxPromotionalEmailsPerWeek": 2
+    },
+    "channelPriority": "Inbound overrides outbound"
+  }
+}
