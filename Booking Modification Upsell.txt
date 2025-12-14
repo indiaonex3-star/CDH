@@ -1,151 +1,1204 @@
 {
   "useCase": {
     "name": "Booking Modification Upsell",
-    "client": "Airline (e.g., Transavia)",
-    "domain": "Pega Customer Decision Hub",
-    "description": "Offer relevant ancillary products to customers during booking modification using Next-Best-Action decisioning."
-  },
-  "issueAndGroup": {
-    "issue": "Grow",
-    "group": "Ancillary Revenue Optimization"
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "BookingManagement",
+    "group": "BookingModificationUpsell",
+    "description": "Real-time upsell of ancillaries and upgrades during booking modification (Manage Booking/Change Flight/Seat Selection/Check-in)."
   },
   "dataModels": {
-    "customerProfile": {
-      "CustomerID": "CUST987654",
-      "LoyaltyTier": "Silver",
-      "TotalFlightsLast12M": 8,
-      "AvgSpend": 220.75,
-      "PreferredSeatType": "Aisle",
-      "HasCheckedBagHistory": true,
-      "CustomerValueScore": 0.78
+    "CustomerProfile": {
+      "schema": [
+        {
+          "name": "CustomerID",
+          "type": "string"
+        },
+        {
+          "name": "LoyaltyTier",
+          "type": "string",
+          "enum": [
+            "Basic",
+            "Silver",
+            "Gold",
+            "Platinum"
+          ]
+        },
+        {
+          "name": "LifetimeValueScore",
+          "type": "number"
+        },
+        {
+          "name": "ConsentEmail",
+          "type": "boolean"
+        },
+        {
+          "name": "ConsentSMS",
+          "type": "boolean"
+        },
+        {
+          "name": "ConsentPush",
+          "type": "boolean"
+        },
+        {
+          "name": "HomeAirport",
+          "type": "string"
+        },
+        {
+          "name": "PreferredSeatType",
+          "type": "string",
+          "enum": [
+            "Aisle",
+            "Window",
+            "Middle",
+            "None"
+          ]
+        },
+        {
+          "name": "PreferredDiet",
+          "type": "string",
+          "enum": [
+            "None",
+            "Vegetarian",
+            "Vegan",
+            "Halal",
+            "Kosher"
+          ]
+        },
+        {
+          "name": "HouseholdID",
+          "type": "string"
+        },
+        {
+          "name": "BlacklistFlag",
+          "type": "boolean"
+        },
+        {
+          "name": "CountryOfResidence",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "CustomerID": "CUST-908712",
+        "LoyaltyTier": "Silver",
+        "LifetimeValueScore": 712.4,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "HomeAirport": "AMS",
+        "PreferredSeatType": "Aisle",
+        "PreferredDiet": "Vegetarian",
+        "HouseholdID": "HH-55231",
+        "BlacklistFlag": false,
+        "CountryOfResidence": "NL"
+      }
     },
-    "bookingDetails": {
-      "BookingID": "BK123456",
-      "BookingStatus": "Confirmed",
-      "FlightDate": "2025-01-20",
-      "DaysToDeparture": 10,
-      "FareClass": "Basic",
-      "RouteType": "International",
-      "FlightDurationHours": 4.5,
-      "HasSeatSelected": false,
-      "HasExtraBag": false,
-      "HasMeal": false
+    "TripContext": {
+      "schema": [
+        {
+          "name": "PNR",
+          "type": "string"
+        },
+        {
+          "name": "BookingChannel",
+          "type": "string",
+          "enum": [
+            "Web",
+            "App",
+            "Agent",
+            "Kiosk"
+          ]
+        },
+        {
+          "name": "TripType",
+          "type": "string",
+          "enum": [
+            "OneWay",
+            "RoundTrip",
+            "MultiCity"
+          ]
+        },
+        {
+          "name": "Origin",
+          "type": "string"
+        },
+        {
+          "name": "Destination",
+          "type": "string"
+        },
+        {
+          "name": "DepartureDateTime",
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "name": "ReturnDateTime",
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "name": "CabinClass",
+          "type": "string",
+          "enum": [
+            "Economy",
+            "PremiumEconomy",
+            "Business"
+          ]
+        },
+        {
+          "name": "FareBrand",
+          "type": "string",
+          "enum": [
+            "Basic",
+            "Standard",
+            "Flex",
+            "FlexPlus",
+            "Premium"
+          ]
+        },
+        {
+          "name": "NumberOfPassengers",
+          "type": "integer"
+        },
+        {
+          "name": "HasInfant",
+          "type": "boolean"
+        },
+        {
+          "name": "PaidBaggageQty",
+          "type": "integer"
+        },
+        {
+          "name": "SeatSelected",
+          "type": "boolean"
+        },
+        {
+          "name": "InsuranceSelected",
+          "type": "boolean"
+        },
+        {
+          "name": "SameDayChangeEligible",
+          "type": "boolean"
+        },
+        {
+          "name": "SegmentStatus",
+          "type": "string",
+          "enum": [
+            "Confirmed",
+            "Rebooked",
+            "Cancelled",
+            "Offloaded"
+          ]
+        }
+      ],
+      "sample": {
+        "PNR": "T7K9QW",
+        "BookingChannel": "Web",
+        "TripType": "RoundTrip",
+        "Origin": "AMS",
+        "Destination": "BCN",
+        "DepartureDateTime": "2026-01-18T09:55:00Z",
+        "ReturnDateTime": "2026-01-22T18:10:00Z",
+        "CabinClass": "Economy",
+        "FareBrand": "Basic",
+        "NumberOfPassengers": 2,
+        "HasInfant": false,
+        "PaidBaggageQty": 0,
+        "SeatSelected": false,
+        "InsuranceSelected": false,
+        "SameDayChangeEligible": true,
+        "SegmentStatus": "Confirmed"
+      }
     },
-    "interactionContext": {
-      "InteractionType": "BookingModification",
-      "Channel": "Web",
-      "DeviceType": "Mobile",
-      "IsInbound": true
+    "FlightInventory": {
+      "schema": [
+        {
+          "name": "FlightNumber",
+          "type": "string"
+        },
+        {
+          "name": "SegmentDate",
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "name": "SeatAvailabilityPremium",
+          "type": "integer"
+        },
+        {
+          "name": "SeatAvailabilityExtraLegroom",
+          "type": "integer"
+        },
+        {
+          "name": "BaggageInventory",
+          "type": "integer"
+        },
+        {
+          "name": "FastTrackAvailability",
+          "type": "boolean"
+        },
+        {
+          "name": "ForecastLoadFactor",
+          "type": "number"
+        },
+        {
+          "name": "WeatherRiskScore",
+          "type": "number"
+        }
+      ],
+      "sample": {
+        "FlightNumber": "HV6501",
+        "SegmentDate": "2026-01-18",
+        "SeatAvailabilityPremium": 12,
+        "SeatAvailabilityExtraLegroom": 4,
+        "BaggageInventory": 50,
+        "FastTrackAvailability": true,
+        "ForecastLoadFactor": 0.81,
+        "WeatherRiskScore": 0.18
+      }
     },
-    "predictiveData": {
-      "SeatUpgradePropensity": 0.72,
-      "BaggageUpsellPropensity": 0.65,
-      "MealUpsellPropensity": 0.4
+    "BehaviorSignals": {
+      "schema": [
+        {
+          "name": "LastPageViewed",
+          "type": "string",
+          "enum": [
+            "ManageBooking",
+            "ChangeFlight",
+            "SeatMap",
+            "CheckIn"
+          ]
+        },
+        {
+          "name": "SessionEvent",
+          "type": "string",
+          "enum": [
+            "ModifyBooking",
+            "CheckInStart",
+            "Payment",
+            "Idle"
+          ]
+        },
+        {
+          "name": "AbandonedAncillaryType",
+          "type": "string",
+          "enum": [
+            "None",
+            "SeatUpgrade",
+            "ExtraLegroom",
+            "ExtraBaggage",
+            "Insurance"
+          ]
+        },
+        {
+          "name": "AbandonedAncillaryTimestamp",
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "name": "ClickedEmailOfferType",
+          "type": "string",
+          "enum": [
+            "None",
+            "SeatUpgrade",
+            "HotelBundle",
+            "CarRental"
+          ]
+        },
+        {
+          "name": "PushOptInTime",
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "name": "PromoCodeUsed",
+          "type": "string"
+        },
+        {
+          "name": "PriceSensitivityScore",
+          "type": "number"
+        }
+      ],
+      "sample": {
+        "LastPageViewed": "ChangeFlight",
+        "SessionEvent": "ModifyBooking",
+        "AbandonedAncillaryType": "ExtraBaggage",
+        "AbandonedAncillaryTimestamp": "2025-12-14T18:21:00Z",
+        "ClickedEmailOfferType": "SeatUpgrade",
+        "PushOptInTime": "2024-11-06T10:00:00Z",
+        "PromoCodeUsed": "WINTER10",
+        "PriceSensitivityScore": 0.63
+      }
+    },
+    "PricingPersonalization": {
+      "schema": [
+        {
+          "name": "DynamicPriceMultiplier",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_SeatUpgrade",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_ExtraLegroom",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_Baggage",
+          "type": "number"
+        },
+        {
+          "name": "AncillaryBasePrice_FastTrack",
+          "type": "number"
+        },
+        {
+          "name": "BNPLEligible",
+          "type": "boolean"
+        },
+        {
+          "name": "BasketTotal",
+          "type": "number"
+        },
+        {
+          "name": "CustomerRiskScore",
+          "type": "number"
+        }
+      ],
+      "sample": {
+        "DynamicPriceMultiplier": 1.15,
+        "AncillaryBasePrice_SeatUpgrade": 22,
+        "AncillaryBasePrice_ExtraLegroom": 34,
+        "AncillaryBasePrice_Baggage": 28,
+        "AncillaryBasePrice_FastTrack": 15,
+        "BNPLEligible": true,
+        "BasketTotal": 146.5,
+        "CustomerRiskScore": 0.32
+      }
     }
   },
   "offers": [
     {
-      "offerCode": "ANC_SEAT",
-      "offerName": "Preferred Seat Upgrade",
-      "eligibilityRule": {
-        "whenRuleName": "When_SeatUpgrade_Eligible",
-        "logic": "HasSeatSelected == false AND FareClass IN ('Basic','Light') AND SeatUpgradePropensity >= 0.6 AND RouteType == 'International'"
-      },
-      "treatments": [
-        {
-          "treatmentCode": "TREAT_SEAT_WEB",
-          "channel": "Web",
-          "eligibilityRule": {
-            "whenRuleName": "When_SeatUpgrade_Web_Eligible",
-            "logic": "Channel == 'Web'"
-          }
-        },
-        {
-          "treatmentCode": "TREAT_SEAT_APP",
-          "channel": "MobileApp",
-          "eligibilityRule": {
-            "whenRuleName": "When_SeatUpgrade_App_Eligible",
-            "logic": "Channel == 'MobileApp' AND PushConsent == true"
-          }
-        }
-      ]
+      "id": "SeatUpgrade",
+      "name": "Seat Upgrade",
+      "description": "Upgrade to preferred aisle/window seat."
     },
     {
-      "offerCode": "ANC_BAG",
-      "offerName": "Extra Baggage Purchase",
-      "eligibilityRule": {
-        "whenRuleName": "When_ExtraBaggage_Eligible",
-        "logic": "HasExtraBag == false AND HasCheckedBagHistory == true AND DaysToDeparture >= 5 AND BaggageUpsellPropensity >= 0.5"
-      },
-      "treatments": [
-        {
-          "treatmentCode": "TREAT_BAG_WEB",
-          "channel": "Web"
-        },
-        {
-          "treatmentCode": "TREAT_BAG_EMAIL",
-          "channel": "Email",
-          "eligibilityRule": {
-            "whenRuleName": "When_Baggage_Email_Eligible",
-            "logic": "EmailConsent == true AND DaysToDeparture >= 7"
-          }
-        }
-      ]
+      "id": "ExtraLegroomSeat",
+      "name": "Extra Legroom Seat",
+      "description": "Upgrade to extra legroom rows."
     },
     {
-      "offerCode": "ANC_MEAL",
-      "offerName": "Pre-Order Meal",
-      "eligibilityRule": {
-        "whenRuleName": "When_MealPreorder_Eligible",
-        "logic": "RouteType == 'International' AND HasMeal == false AND MealUpsellPropensity >= 0.35 AND FlightDurationHours >= 3"
-      },
-      "treatments": [
-        {
-          "treatmentCode": "TREAT_MEAL_WEB",
-          "channel": "Web"
-        },
-        {
-          "treatmentCode": "TREAT_MEAL_APP",
-          "channel": "MobileApp"
-        }
-      ]
+      "id": "ExtraBaggage",
+      "name": "Extra Baggage",
+      "description": "Add one or more checked bags."
     },
     {
-      "offerCode": "ANC_FAST",
-      "offerName": "Fast Track Boarding",
-      "eligibilityRule": {
-        "whenRuleName": "When_FastTrack_Eligible",
-        "logic": "LoyaltyTier IN ('Silver','Gold','Platinum') AND FareClass != 'Business' AND CustomerValueScore >= 0.7"
-      },
-      "treatments": [
-        {
-          "treatmentCode": "TREAT_FAST_WEB",
-          "channel": "Web"
-        },
-        {
-          "treatmentCode": "TREAT_FAST_EMAIL",
-          "channel": "Email"
-        }
-      ]
+      "id": "FastTrackSecurity",
+      "name": "Fast Track Security",
+      "description": "Priority security lane access."
+    },
+    {
+      "id": "SameDayChange",
+      "name": "Same Day Change",
+      "description": "Flexible rebooking to another flight on the same day."
+    },
+    {
+      "id": "TravelInsurance",
+      "name": "Travel Insurance",
+      "description": "Trip protection for delays, cancellations, and medical."
+    },
+    {
+      "id": "HotelBundle",
+      "name": "Hotel Bundle",
+      "description": "Partner hotel offers tailored to destination."
+    },
+    {
+      "id": "CarRental",
+      "name": "Car Rental",
+      "description": "Partner car rental offers."
+    },
+    {
+      "id": "MealPreOrder",
+      "name": "Meal Pre-Order",
+      "description": "Pre-order meal aligned to dietary preferences."
+    },
+    {
+      "id": "BNPLPayment",
+      "name": "BNPL Payment",
+      "description": "Pay-in-installments option for fare and ancillaries."
     }
   ],
-  "commonEligibility": {
-    "whenRuleName": "When_BookingModification_Upsell_Eligible",
-    "logic": "InteractionType == 'BookingModification' AND DaysToDeparture > 2 AND BookingStatus == 'Confirmed'"
+  "treatments": {
+    "SeatUpgrade": [
+      {
+        "id": "Treat_SeatUpgrade_Banner",
+        "channel": "Web/App",
+        "placement": "ManageBookingInlineBanner"
+      },
+      {
+        "id": "Treat_SeatUpgrade_Modal",
+        "channel": "Web/App",
+        "placement": "PostSeatMapModal"
+      },
+      {
+        "id": "Treat_SeatUpgrade_AgentPrompt",
+        "channel": "Agent",
+        "placement": "CallCenterScript"
+      },
+      {
+        "id": "Treat_SeatUpgrade_Push",
+        "channel": "AppPush",
+        "placement": "PreCheckInPush"
+      }
+    ],
+    "ExtraLegroomSeat": [
+      {
+        "id": "Treat_ExtraLegroom_Highlight",
+        "channel": "Web/App",
+        "placement": "SeatMapHighlight"
+      },
+      {
+        "id": "Treat_ExtraLegroom_Email",
+        "channel": "Email",
+        "placement": "AbandonmentFollowUp"
+      }
+    ],
+    "ExtraBaggage": [
+      {
+        "id": "Treat_Baggage_CheckInCard",
+        "channel": "Web/App/Kiosk",
+        "placement": "CheckInStepCard"
+      },
+      {
+        "id": "Treat_Baggage_SMS24h",
+        "channel": "SMS",
+        "placement": "Reminder24hBeforeDeparture"
+      }
+    ],
+    "FastTrackSecurity": [
+      {
+        "id": "Treat_FastTrack_Interstitial",
+        "channel": "App",
+        "placement": "InterstitialDuringFlow"
+      },
+      {
+        "id": "Treat_FastTrack_Kiosk",
+        "channel": "Kiosk",
+        "placement": "AirportKioskPrompt"
+      },
+      {
+        "id": "Treat_FastTrack_Agent",
+        "channel": "Agent",
+        "placement": "ScriptedUpsell"
+      }
+    ],
+    "SameDayChange": [
+      {
+        "id": "Treat_SDC_Tile",
+        "channel": "Web/App",
+        "placement": "SwitchToEarlierFlightTile"
+      },
+      {
+        "id": "Treat_SDC_Agent",
+        "channel": "Agent",
+        "placement": "AgentAssistedRecommendation"
+      },
+      {
+        "id": "Treat_SDC_Push",
+        "channel": "AppPush",
+        "placement": "SeatsOpenPushAlert"
+      }
+    ],
+    "TravelInsurance": [
+      {
+        "id": "Treat_Insurance_CompareCard",
+        "channel": "Web/App",
+        "placement": "PremiumVsStandardCompare"
+      },
+      {
+        "id": "Treat_Insurance_EmailSummary",
+        "channel": "Email",
+        "placement": "PolicySummaryFollowUp"
+      }
+    ],
+    "HotelBundle": [
+      {
+        "id": "Treat_Hotel_RetargetBanner",
+        "channel": "Web/App",
+        "placement": "DestinationRetargetBanner"
+      },
+      {
+        "id": "Treat_Hotel_EmailDL",
+        "channel": "Email",
+        "placement": "PartnerDeepLink"
+      },
+      {
+        "id": "Treat_Hotel_Agent",
+        "channel": "Agent",
+        "placement": "CrossSellScript"
+      }
+    ],
+    "CarRental": [
+      {
+        "id": "Treat_Car_DestinationCard",
+        "channel": "Web/App",
+        "placement": "DestinationBasedCard"
+      },
+      {
+        "id": "Treat_Car_EmailWallet",
+        "channel": "Email/App",
+        "placement": "WalletConfirmation"
+      }
+    ],
+    "MealPreOrder": [
+      {
+        "id": "Treat_Meal_DietaryPrompt",
+        "channel": "Web/App",
+        "placement": "DietaryFilterPrompt"
+      },
+      {
+        "id": "Treat_Meal_Email48h",
+        "channel": "Email",
+        "placement": "NoMealSelected48h"
+      }
+    ],
+    "BNPLPayment": [
+      {
+        "id": "Treat_BNPL_Toggle",
+        "channel": "Web/App",
+        "placement": "PaymentScreenToggle"
+      },
+      {
+        "id": "Treat_BNPL_EmailConfirm",
+        "channel": "Email",
+        "placement": "InstallmentScheduleConfirmation"
+      }
+    ]
   },
-  "arbitration": {
-    "strategy": "Weighted Score",
-    "formula": "(Propensity * 0.5) + (CustomerValueScore * 0.3) + (MarginScore * 0.2)"
+  "eligibility": {
+    "common": [
+      {
+        "ruleName": "Common_Eligibility_NotBlacklisted",
+        "expression": "Customer.BlacklistFlag = false"
+      },
+      {
+        "ruleName": "Common_Eligibility_ActivePNR",
+        "expression": "TripContext.PNR != null AND TripContext.SegmentStatus IN ['Confirmed','Rebooked']"
+      },
+      {
+        "ruleName": "Common_Eligibility_ConsentAndReachability",
+        "expression": "(Customer.ConsentEmail OR Customer.ConsentSMS OR Customer.ConsentPush) = true"
+      },
+      {
+        "ruleName": "Common_Eligibility_FlightConfirmed",
+        "expression": "TripContext.SegmentStatus = 'Confirmed'"
+      },
+      {
+        "ruleName": "Common_Eligibility_SessionIsModifyBooking",
+        "expression": "Behavior.LastPageViewed IN ['ManageBooking','ChangeFlight','SeatMap'] OR Behavior.SessionEvent = 'ModifyBooking'"
+      }
+    ],
+    "individual": [
+      {
+        "offerId": "SeatUpgrade",
+        "ruleName": "Elig_SeatUpgrade",
+        "conditions": [
+          {
+            "label": "Fare brand not inclusive",
+            "expression": "TripContext.FareBrand NOT IN ['FlexPlus','Premium']"
+          },
+          {
+            "label": "Availability threshold",
+            "expression": "FlightInventory.SeatAvailabilityPremium >= 5"
+          },
+          {
+            "label": "Preference alignment",
+            "expression": "Customer.PreferredSeatType IN ['Aisle','Window'] OR TripContext.SeatSelected = false"
+          },
+          {
+            "label": "Price sensitivity cap",
+            "expression": "Pricing.DynamicPriceMultiplier <= 1.2 OR Behavior.PriceSensitivityScore <= 0.7"
+          },
+          {
+            "label": "Timing window",
+            "expression": "now() BETWEEN (TripContext.DepartureDateTime - 72h) AND (TripContext.DepartureDateTime - 2h)"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraLegroomSeat",
+        "ruleName": "Elig_ExtraLegroom",
+        "conditions": [
+          {
+            "label": "Inventory check",
+            "expression": "FlightInventory.SeatAvailabilityExtraLegroom >= 2"
+          },
+          {
+            "label": "Load factor guardrail",
+            "expression": "FlightInventory.ForecastLoadFactor <= 0.9"
+          },
+          {
+            "label": "Seat not already selected",
+            "expression": "TripContext.SeatSelected = false OR (TripContext.SeatSelected = true AND NOT Context.ExtraLegroomPreviouslyPurchased)"
+          },
+          {
+            "label": "Family adjacency",
+            "expression": "TripContext.NumberOfPassengers <= 4 AND TripContext.HasInfant = false"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "ruleName": "Elig_ExtraBaggage",
+        "conditions": [
+          {
+            "label": "No baggage purchased",
+            "expression": "TripContext.PaidBaggageQty = 0"
+          },
+          {
+            "label": "Destination propensity cluster",
+            "expression": "Context.DestinationCluster IN ['Ski','Beach'] OR Context.Season IN ['Winter','Summer']"
+          },
+          {
+            "label": "Abandonment recapture",
+            "expression": "Behavior.AbandonedAncillaryType = 'ExtraBaggage' AND age(Behavior.AbandonedAncillaryTimestamp) <= 7d"
+          },
+          {
+            "label": "Price floor",
+            "expression": "Pricing.AncillaryBasePrice_Baggage * Pricing.DynamicPriceMultiplier <= 45.00"
+          }
+        ]
+      },
+      {
+        "offerId": "FastTrackSecurity",
+        "ruleName": "Elig_FastTrack",
+        "conditions": [
+          {
+            "label": "Availability",
+            "expression": "FlightInventory.FastTrackAvailability = true"
+          },
+          {
+            "label": "Airport supports fast track",
+            "expression": "TripContext.Origin IN ['AMS','ORY','BCN','OPO']"
+          },
+          {
+            "label": "Tight connection or peak time",
+            "expression": "Context.ConnectionTime <= 60 OR Context.DepartureHour IN [6,7,8,9,10,17,18,19,20]"
+          },
+          {
+            "label": "Loyalty boost",
+            "expression": "Customer.LoyaltyTier IN ['Silver','Gold','Platinum'] OR Customer.LifetimeValueScore >= 600"
+          }
+        ]
+      },
+      {
+        "offerId": "SameDayChange",
+        "ruleName": "Elig_SameDayChange",
+        "conditions": [
+          {
+            "label": "Policy eligibility",
+            "expression": "TripContext.SameDayChangeEligible = true"
+          },
+          {
+            "label": "Same-day alternative seats",
+            "expression": "Context.AltFlightsSeatsAvailable >= 2"
+          },
+          {
+            "label": "Disruption or preference signal",
+            "expression": "FlightInventory.WeatherRiskScore >= 0.3 OR Behavior.LastPageViewed = 'ChangeFlight'"
+          },
+          {
+            "label": "Fare difference tolerance",
+            "expression": "Context.ExpectedFareDelta <= Context.ThresholdByTier[Customer.LoyaltyTier]"
+          }
+        ]
+      },
+      {
+        "offerId": "TravelInsurance",
+        "ruleName": "Elig_Insurance",
+        "conditions": [
+          {
+            "label": "Not already purchased",
+            "expression": "TripContext.InsuranceSelected = false"
+          },
+          {
+            "label": "Season or risk signal",
+            "expression": "FlightInventory.WeatherRiskScore >= 0.25 OR Context.Season = 'Winter'"
+          },
+          {
+            "label": "International travel",
+            "expression": "Context.OriginCountry != Context.DestinationCountry"
+          },
+          {
+            "label": "Household protection",
+            "expression": "Customer.HouseholdID != null AND TripContext.NumberOfPassengers >= 2"
+          }
+        ]
+      },
+      {
+        "offerId": "HotelBundle",
+        "ruleName": "Elig_HotelBundle",
+        "conditions": [
+          {
+            "label": "Destination city availability",
+            "expression": "Context.PartnerHotelCities CONTAINS TripContext.Destination"
+          },
+          {
+            "label": "Trip duration",
+            "expression": "Context.TripDurationDays >= 2"
+          },
+          {
+            "label": "Past engagement",
+            "expression": "Behavior.ClickedEmailOfferType = 'HotelBundle' OR Context.PriorHotelPurchase = true"
+          },
+          {
+            "label": "Price alignment",
+            "expression": "Context.BundlePrice <= Context.BudgetFromPriceSensitivity[Behavior.PriceSensitivityScore]"
+          }
+        ]
+      },
+      {
+        "offerId": "CarRental",
+        "ruleName": "Elig_CarRental",
+        "conditions": [
+          {
+            "label": "Airport pickup supported",
+            "expression": "Context.CarPartnersAirports CONTAINS TripContext.Destination"
+          },
+          {
+            "label": "Trip purpose inferred",
+            "expression": "Context.TripPurpose IN ['Leisure','Business']"
+          },
+          {
+            "label": "Luggage/group size signal",
+            "expression": "TripContext.PaidBaggageQty >= 1 OR Context.GroupSize >= 2"
+          },
+          {
+            "label": "Timing window",
+            "expression": "now() BETWEEN (TripContext.DepartureDateTime - 10d) AND (TripContext.DepartureDateTime - 1d)"
+          }
+        ]
+      },
+      {
+        "offerId": "MealPreOrder",
+        "ruleName": "Elig_MealPreOrder",
+        "conditions": [
+          {
+            "label": "Cabin supports meal",
+            "expression": "TripContext.CabinClass IN ['Economy','PremiumEconomy'] AND Context.RouteIsCatered = true"
+          },
+          {
+            "label": "Preference match",
+            "expression": "Customer.PreferredDiet IN ['Vegetarian','Vegan','Halal','Kosher']"
+          },
+          {
+            "label": "Lead time",
+            "expression": "now() <= (TripContext.DepartureDateTime - 24h)"
+          }
+        ]
+      },
+      {
+        "offerId": "BNPLPayment",
+        "ruleName": "Elig_BNPL",
+        "conditions": [
+          {
+            "label": "Partner available",
+            "expression": "Pricing.BNPLEligible = true"
+          },
+          {
+            "label": "Basket threshold",
+            "expression": "Pricing.BasketTotal >= 80.00"
+          },
+          {
+            "label": "Risk screen",
+            "expression": "Pricing.CustomerRiskScore <= 0.5"
+          },
+          {
+            "label": "Regulatory geography",
+            "expression": "Customer.CountryOfResidence IN Context.BNPLPermittedMarkets"
+          }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "SeatUpgrade",
+        "treatments": [
+          {
+            "treatmentId": "Treat_SeatUpgrade_Banner",
+            "expression": "Behavior.SessionEvent = 'ModifyBooking' AND FlightInventory.SeatAvailabilityPremium >= 5"
+          },
+          {
+            "treatmentId": "Treat_SeatUpgrade_Modal",
+            "expression": "Context.SeatMapOpened = true AND TripContext.SeatSelected = false"
+          },
+          {
+            "treatmentId": "Treat_SeatUpgrade_AgentPrompt",
+            "expression": "Context.AgentChannel = true AND FlightInventory.SeatAvailabilityPremium >= 3"
+          },
+          {
+            "treatmentId": "Treat_SeatUpgrade_Push",
+            "expression": "Customer.ConsentPush = true AND Context.TimeToDepartureHours BETWEEN 6 AND 24"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraLegroomSeat",
+        "treatments": [
+          {
+            "treatmentId": "Treat_ExtraLegroom_Highlight",
+            "expression": "FlightInventory.SeatAvailabilityExtraLegroom >= 2 AND Context.SeatMapOpened = true"
+          },
+          {
+            "treatmentId": "Treat_ExtraLegroom_Email",
+            "expression": "Customer.ConsentEmail = true AND Behavior.AbandonedAncillaryType = 'ExtraLegroom'"
+          }
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Baggage_CheckInCard",
+            "expression": "Context.CheckInStarted = true AND TripContext.PaidBaggageQty = 0"
+          },
+          {
+            "treatmentId": "Treat_Baggage_SMS24h",
+            "expression": "Customer.ConsentSMS = true AND Context.TimeToDepartureHours BETWEEN 24 AND 48"
+          }
+        ]
+      },
+      {
+        "offerId": "FastTrackSecurity",
+        "treatments": [
+          {
+            "treatmentId": "Treat_FastTrack_Interstitial",
+            "expression": "TripContext.Origin IN Context.FastTrackAirports AND Context.PeakHours = true"
+          },
+          {
+            "treatmentId": "Treat_FastTrack_Kiosk",
+            "expression": "Context.AirportKioskSession = true AND FlightInventory.FastTrackAvailability = true"
+          },
+          {
+            "treatmentId": "Treat_FastTrack_Agent",
+            "expression": "Context.AgentChannel = true AND TripContext.Origin IN Context.FastTrackAirports"
+          }
+        ]
+      },
+      {
+        "offerId": "SameDayChange",
+        "treatments": [
+          {
+            "treatmentId": "Treat_SDC_Tile",
+            "expression": "Context.AltFlightsSeatsAvailable >= 2 AND Context.ExpectedFareDelta <= Context.ThresholdByTier[Customer.LoyaltyTier]"
+          },
+          {
+            "treatmentId": "Treat_SDC_Agent",
+            "expression": "Context.AgentChannel = true"
+          },
+          {
+            "treatmentId": "Treat_SDC_Push",
+            "expression": "Customer.ConsentPush = true AND Context.SeatsOpenAlert = true"
+          }
+        ]
+      },
+      {
+        "offerId": "TravelInsurance",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Insurance_CompareCard",
+            "expression": "TripContext.InsuranceSelected = false AND FlightInventory.WeatherRiskScore >= 0.25"
+          },
+          {
+            "treatmentId": "Treat_Insurance_EmailSummary",
+            "expression": "Customer.ConsentEmail = true"
+          }
+        ]
+      },
+      {
+        "offerId": "HotelBundle",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Hotel_RetargetBanner",
+            "expression": "Context.PartnerHotelCities CONTAINS TripContext.Destination"
+          },
+          {
+            "treatmentId": "Treat_Hotel_EmailDL",
+            "expression": "Customer.ConsentEmail = true AND Context.TripDurationDays >= 2"
+          },
+          {
+            "treatmentId": "Treat_Hotel_Agent",
+            "expression": "Context.AgentChannel = true"
+          }
+        ]
+      },
+      {
+        "offerId": "CarRental",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Car_DestinationCard",
+            "expression": "Context.CarPartnersAirports CONTAINS TripContext.Destination"
+          },
+          {
+            "treatmentId": "Treat_Car_EmailWallet",
+            "expression": "Customer.ConsentEmail = true"
+          }
+        ]
+      },
+      {
+        "offerId": "MealPreOrder",
+        "treatments": [
+          {
+            "treatmentId": "Treat_Meal_DietaryPrompt",
+            "expression": "Customer.PreferredDiet != 'None' AND Context.RouteIsCatered = true"
+          },
+          {
+            "treatmentId": "Treat_Meal_Email48h",
+            "expression": "Customer.ConsentEmail = true AND Context.TimeToDepartureHours BETWEEN 24 AND 48"
+          }
+        ]
+      },
+      {
+        "offerId": "BNPLPayment",
+        "treatments": [
+          {
+            "treatmentId": "Treat_BNPL_Toggle",
+            "expression": "Pricing.BasketTotal >= 80.0 AND Pricing.BNPLEligible = true"
+          },
+          {
+            "treatmentId": "Treat_BNPL_EmailConfirm",
+            "expression": "Customer.ConsentEmail = true"
+          }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with Customer, PNR, Inventory, Pricing, Behavior.",
+        "logic": [
+          "On ManageBooking entry: call PNR, inventory, consent, pricing services",
+          "Cache TTL = 180 seconds"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Identify booking modification intent.",
+        "logic": [
+          "IF Behavior.SessionEvent = 'ModifyBooking'",
+          "OR Behavior.LastPageViewed IN ['ChangeFlight','SeatMap','CheckIn']",
+          "THEN Context.Intent = 'BookingModification'"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Gate offers by common eligibility and channel reachability.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Restrict by channel (Web/App/Agent/Kiosk/Email/SMS/Push)"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate individual offer eligibility + applicability reason codes.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set Applicability: e.g., 'InventoryLow','AlreadyPurchased','NotRelevant'"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions using Propensity × Priority × Value × Context.",
+        "logic": [
+          "Score = w1*AdaptivePropensity + w2*BusinessPriority + w3*ExpectedMargin + w4*ContextFit",
+          "BusinessPriority: {'ExtraBaggage':85,'SeatUpgrade':80,'FastTrackSecurity':70,'BNPLPayment':60}",
+          "ContextFit +10 if Behavior.AbandonedAncillaryType matches offer"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Pick channel-specific treatment.",
+        "logic": [
+          "Filter by treatment eligibility Treat_*",
+          "Preference order: Inline > Modal > Interstitial > AgentScript",
+          "One upsell per step to avoid fatigue"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply global and offer-level contact constraints.",
+        "logic": [
+          "Apply GlobalFrequencyCaps",
+          "Apply OfferLevelCaps",
+          "Apply ContextualSuppressions",
+          "Apply RecencyRules"
+        ]
+      },
+      {
+        "id": "PricePersonalization",
+        "type": "Calculator",
+        "purpose": "Tailor price within guardrails.",
+        "logic": [
+          "OfferPrice = BasePrice × DynamicPriceMultiplier",
+          "Apply TierMaxDiscount & LTV guardrails"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment; capture outcomes to Interaction History.",
+        "logic": [
+          "Persist IH with keys: CustomerID, PNR, OfferID, TreatmentID, Channel, Outcome"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update models and strategies.",
+        "logic": [
+          "Adaptive models ingest impressions/clicks/purchases",
+          "Update segments & suitability features"
+        ]
+      }
+    ]
   },
   "contactPolicies": {
-    "actionLevel": {
-      "maxSameOfferPerBooking": 1,
-      "maxSameOfferPerSession": 1
+    "globalFrequencyCaps": {
+      "Email": {
+        "maxPer7Days": 2,
+        "minIntervalHours": 24
+      },
+      "SMS_Push": {
+        "maxPer48Hours": 1,
+        "suppressWithinDisruptionHours": 12
+      },
+      "InApp_Web_Modals": {
+        "maxPerSession": 1
+      },
+      "Banners": {
+        "repetition": "non-repetitive within session"
+      }
     },
-    "customerLevel": {
-      "maxAncillaryOffersPerDay": 3,
-      "maxPromotionalEmailsPerWeek": 2
-    },
-    "channelPriority": "Inbound overrides outbound"
+    "offerLevelCaps": [
+      {
+        "offerId": "SeatUpgrade",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "SeatSelected",
+          "PurchaseComplete"
+        ]
+      },
+      {
+        "offerId": "ExtraLegroomSeat",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "ExtraLegroomPurchased",
+          "SeatSelected"
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "BaggagePurchased"
+        ]
+      },
+      {
+        "offerId": "FastTrackSecurity",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "OriginNotSupported"
+        ]
+      },
+      {
+        "offerId": "SameDayChange",
+        "maxPerDay": 1,
+        "suppressOn": [
+          "ChangeEventOccurred"
+        ]
+      },
+      {
+        "offerId": "TravelInsurance",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "InsurancePurchased"
+        ]
+      },
+      {
+        "offerId": "HotelBundle",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "DepartureWithin24h"
+        ]
+      },
+      {
+        "offerId": "CarRental",
+        "maxPerTrip": 2,
+        "suppressOn": [
+          "DepartureWithin24h"
+        ]
+      },
+      {
+        "offerId": "MealPreOrder",
+        "maxPerTrip": 1,
+        "suppressOn": [
+          "MealSelected"
+        ]
+      },
+      {
+        "offerId": "BNPLPayment",
+        "maxPerPaymentSession": 1,
+        "suppressOn": [
+          "DeclinedTwice"
+        ]
+      }
+    ],
+    "contextualSuppressions": [
+      {
+        "context": "DisruptionHandling",
+        "rule": "Allow only service NBAs (rebooking/voucher); suppress commercial ancillaries"
+      },
+      {
+        "context": "RegulatoryConstraint",
+        "rule": "Suppress BNPL/Insurance in prohibited markets"
+      },
+      {
+        "context": "AgentChannel",
+        "rule": "Max 1 upsell per call segment"
+      }
+    ],
+    "recencyRules": [
+      {
+        "ruleName": "AbandonmentRecoveryWindow",
+        "expression": "IF Behavior.AbandonedAncillaryType matches offer THEN allow one targeted message within 7 days ELSE suppress"
+      }
+    ]
+  },
+  "channels": [
+    "Web",
+    "App",
+    "Agent",
+    "Kiosk",
+    "Email",
+    "SMS",
+    "Push"
+  ],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=BookingManagement, Group=BookingModificationUpsell.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; individual Elig_* under each Action.",
+    "arbitrationModel": "Combine adaptive propensity with business priority and expected margin; add context signals.",
+    "treatmentsMapping": "Define Treat_* per channel and placement; map in Action treatments.",
+    "contactPolicyConfig": "Configure global and action-level policies in top-level strategy before arbitration.",
+    "dataFlows": "Real-time integrations to PNR, inventory, pricing, consent; write IH outcomes for learning."
   }
 }
