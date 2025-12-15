@@ -1,0 +1,503 @@
+{
+  "useCase": {
+    "name": "Missed Flight: Customer Care Reprotection & Service Recovery",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "ServiceAndRecovery",
+    "group": "MissedFlightSupport",
+    "description": "Service-first NBA for customers who missed a flight and contact customer care. Orchestrates reprotection (same-day rebooking, standby), waiver evaluation, vouchers, and baggage recovery with minimal friction and clear policy guidance."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "LifetimeValueScore", "type": "number" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentWhatsApp", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-882134",
+        "FullName": "Rohan Mehta",
+        "LoyaltyTier": "Gold",
+        "LifetimeValueScore": 812.7,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentWhatsApp": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "TripContext": {
+      "schema": [
+        { "name": "PNR", "type": "string" },
+        { "name": "TicketNumber", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] },
+        { "name": "FareRule_NoShowPenalty", "type": "boolean" },
+        { "name": "FareRule_SameDayChangeAllowed", "type": "boolean" },
+        { "name": "CheckedBagsCount", "type": "integer" },
+        { "name": "TravelInsuranceSelected", "type": "boolean" },
+        { "name": "International", "type": "boolean" }
+      ],
+      "sample": {
+        "PNR": "M9F2KT",
+        "TicketNumber": "235-4411223344",
+        "Origin": "HYD",
+        "Destination": "DEL",
+        "DepartureDateTime": "2026-04-11T07:10:00+05:30",
+        "CabinClass": "Economy",
+        "FareBrand": "Standard",
+        "FareRule_NoShowPenalty": true,
+        "FareRule_SameDayChangeAllowed": true,
+        "CheckedBagsCount": 1,
+        "TravelInsuranceSelected": false,
+        "International": false
+      }
+    },
+    "FlightOperations": {
+      "schema": [
+        { "name": "FlightNumber", "type": "string" },
+        { "name": "SegmentDate", "type": "string", "format": "date" },
+        { "name": "FlightStatus", "type": "string", "enum": ["Scheduled", "Boarding", "Departed", "Cancelled", "Delayed"] },
+        { "name": "NoShowFlag", "type": "boolean" },
+        { "name": "TimeSinceDepartureMinutes", "type": "integer" },
+        { "name": "DelayReasonCode", "type": "string" },
+        { "name": "NextFlightsSeatsAvailable", "type": "integer" },
+        { "name": "StandbyCapacityRemaining", "type": "integer" },
+        { "name": "AirportHasLounge", "type": "boolean" }
+      ],
+      "sample": {
+        "FlightNumber": "AI751",
+        "SegmentDate": "2026-04-11",
+        "FlightStatus": "Departed",
+        "NoShowFlag": true,
+        "TimeSinceDepartureMinutes": 25,
+        "DelayReasonCode": "ON_TIME",
+        "NextFlightsSeatsAvailable": 6,
+        "StandbyCapacityRemaining": 8,
+        "AirportHasLounge": true
+      }
+    },
+    "SupportInteraction": {
+      "schema": [
+        { "name": "ContactChannel", "type": "string", "enum": ["Voice", "Chat", "WhatsApp", "Email"] },
+        { "name": "ReasonCategory", "type": "string", "enum": ["MissedFlight", "Rebooking", "Voucher", "Baggage", "Other"] },
+        { "name": "DetectedIntent", "type": "string", "enum": ["MissedFlight", "SameDayRebooking", "Standby", "WaiverRequest", "HotelHelp", "VoucherHelp"] },
+        { "name": "AgentEscalation", "type": "boolean" },
+        { "name": "Language", "type": "string" },
+        { "name": "TimeToNextFlightHours", "type": "number" },
+        { "name": "ComplaintSeverity", "type": "string", "enum": ["None", "Low", "Medium", "High"] }
+      ],
+      "sample": {
+        "ContactChannel": "Voice",
+        "ReasonCategory": "MissedFlight",
+        "DetectedIntent": "MissedFlight",
+        "AgentEscalation": true,
+        "Language": "EN",
+        "TimeToNextFlightHours": 3.5,
+        "ComplaintSeverity": "Medium"
+      }
+    },
+    "PricingRules": {
+      "schema": [
+        { "name": "ChangeFee", "type": "number" },
+        { "name": "NoShowReissuanceFee", "type": "number" },
+        { "name": "ExpectedFareDifference", "type": "number" },
+        { "name": "DynamicPriceMultiplier", "type": "number" },
+        { "name": "HotelVoucherCap", "type": "number" },
+        { "name": "MealVoucherAmount", "type": "number" },
+        { "name": "GroundTransportVoucherAmount", "type": "number" }
+      ],
+      "sample": {
+        "ChangeFee": 45.0,
+        "NoShowReissuanceFee": 60.0,
+        "ExpectedFareDifference": 22.5,
+        "DynamicPriceMultiplier": 1.0,
+        "HotelVoucherCap": 75.0,
+        "MealVoucherAmount": 12.0,
+        "GroundTransportVoucherAmount": 10.0
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        { "name": "CauseCategory", "type": "string", "enum": ["CustomerLate", "AirportQueue", "CarrierDelay", "ForceMajeure"] },
+        { "name": "CompassionPolicyEligible", "type": "boolean" },
+        { "name": "LoyaltyTierThresholds", "type": "object", "properties": { "Gold": { "type": "number" }, "Platinum": { "type": "number" } } },
+        { "name": "RebookingWindowMinutes", "type": "integer" },
+        { "name": "PartnerReprotectAvailable", "type": "boolean" },
+        { "name": "BaggageLocated", "type": "boolean" }
+      ],
+      "sample": {
+        "CauseCategory": "CustomerLate",
+        "CompassionPolicyEligible": true,
+        "LoyaltyTierThresholds": { "Gold": 50, "Platinum": 75 },
+        "RebookingWindowMinutes": 120,
+        "PartnerReprotectAvailable": false,
+        "BaggageLocated": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_ExplainMissedFlightPolicy", "name": "Explain Missed Flight Policy", "description": "Clear guidance on no-show rules, rebooking windows, and fees." },
+    { "id": "Service_SameDayRebooking", "name": "Same-Day Rebooking", "description": "Rebook to next available flight within policy window." },
+    { "id": "Service_StandbyEnrollment", "name": "Standby Enrollment", "description": "Add passenger to standby list for earlier departure." },
+    { "id": "Service_FeeWaiverEvaluation", "name": "Fee Waiver Evaluation", "description": "Assess waiver or reduction of fees based on tier/compassion policy." },
+    { "id": "Service_MealVoucher", "name": "Meal Voucher", "description": "Provide meal voucher during extended wait." },
+    { "id": "Service_HotelAssistance", "name": "Hotel Assistance", "description": "Arrange hotel if overnight stay is required per policy." },
+    { "id": "Service_GroundTransportVoucher", "name": "Ground Transport Voucher", "description": "Provide local transport voucher when applicable." },
+    { "id": "Service_BaggageRecovery", "name": "Baggage Recovery & Forwarding", "description": "Hold/forward checked baggage to new flight or destination." },
+    { "id": "Service_LoungeAccess", "name": "Lounge Access (Courtesy)", "description": "Courtesy lounge pass for high-tier customers during wait." },
+    { "id": "Service_InsuranceClaimAssist", "name": "Insurance Claim Assistance", "description": "Guide customers with insurance to file eligible claims." }
+  ],
+  "treatments": {
+    "Service_ExplainMissedFlightPolicy": [
+      { "id": "Treat_PolicyExplain_AgentScript", "channel": "Agent", "placement": "GuidedScriptPanel" },
+      { "id": "Treat_PolicyExplain_EmailLink", "channel": "Email", "placement": "PolicyDocumentLink" },
+      { "id": "Treat_PolicyExplain_ChatCard", "channel": "Chat", "placement": "RichCardSummary" }
+    ],
+    "Service_SameDayRebooking": [
+      { "id": "Treat_Rebook_AgentAction", "channel": "Agent", "placement": "RebookingWorkflow" },
+      { "id": "Treat_Rebook_SMSConfirm", "channel": "SMS", "placement": "NewItineraryConfirmation" },
+      { "id": "Treat_Rebook_EmailTicket", "channel": "Email", "placement": "E-TicketUpdate" }
+    ],
+    "Service_StandbyEnrollment": [
+      { "id": "Treat_Standby_AgentAction", "channel": "Agent", "placement": "StandbyEnrollmentPanel" },
+      { "id": "Treat_Standby_SMSStatus", "channel": "SMS", "placement": "StandbyStatusUpdates" }
+    ],
+    "Service_FeeWaiverEvaluation": [
+      { "id": "Treat_Waiver_AgentReview", "channel": "Agent", "placement": "WaiverDecisionPanel" },
+      { "id": "Treat_Waiver_EmailOutcome", "channel": "Email", "placement": "WaiverOutcomeNotice" }
+    ],
+    "Service_MealVoucher": [
+      { "id": "Treat_MealVoucher_AgentIssue", "channel": "Agent", "placement": "VoucherIssuancePanel" },
+      { "id": "Treat_MealVoucher_SMSQR", "channel": "SMS", "placement": "QRCodeVoucher" }
+    ],
+    "Service_HotelAssistance": [
+      { "id": "Treat_Hotel_AgentArrange", "channel": "Agent", "placement": "HotelBookingPanel" },
+      { "id": "Treat_Hotel_EmailItinerary", "channel": "Email", "placement": "HotelConfirmation" }
+    ],
+    "Service_GroundTransportVoucher": [
+      { "id": "Treat_Transport_AgentIssue", "channel": "Agent", "placement": "TransportVoucherPanel" },
+      { "id": "Treat_Transport_SMSQR", "channel": "SMS", "placement": "QRCodeVoucher" }
+    ],
+    "Service_BaggageRecovery": [
+      { "id": "Treat_Baggage_AgentAction", "channel": "Agent", "placement": "BaggageRecoveryWorkflow" },
+      { "id": "Treat_Baggage_EmailStatus", "channel": "Email", "placement": "BaggageForwardingStatus" }
+    ],
+    "Service_LoungeAccess": [
+      { "id": "Treat_Lounge_AgentIssue", "channel": "Agent", "placement": "LoungePassPanel" },
+      { "id": "Treat_Lounge_SMSQR", "channel": "SMS", "placement": "QRPassDelivery" }
+    ],
+    "Service_InsuranceClaimAssist": [
+      { "id": "Treat_Insurance_AgentGuide", "channel": "Agent", "placement": "ClaimGuidanceScript" },
+      { "id": "Treat_Insurance_EmailForm", "channel": "Email", "placement": "ClaimFormLink" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_ActiveTicketOrPNR", "expression": "(TripContext.PNR != null OR TripContext.TicketNumber != null)" },
+      { "ruleName": "Common_Eligibility_MissedFlightContext", "expression": "SupportInteraction.ReasonCategory = 'MissedFlight' AND FlightOperations.FlightStatus = 'Departed' AND FlightOperations.NoShowFlag = true" },
+      { "ruleName": "Common_Eligibility_WithinRebookingWindow", "expression": "FlightOperations.TimeSinceDepartureMinutes <= ContextDerived.RebookingWindowMinutes" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentWhatsApp) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_ExplainMissedFlightPolicy",
+        "ruleName": "Elig_Service_PolicyExplain",
+        "conditions": [
+          { "label": "Always for missed flight", "expression": "SupportInteraction.DetectedIntent = 'MissedFlight'" }
+        ]
+      },
+      {
+        "offerId": "Service_SameDayRebooking",
+        "ruleName": "Elig_Service_SameDayRebooking",
+        "conditions": [
+          { "label": "Policy allows same-day", "expression": "TripContext.FareRule_SameDayChangeAllowed = true" },
+          { "label": "Seats available", "expression": "FlightOperations.NextFlightsSeatsAvailable >= 1" },
+          { "label": "Within window", "expression": "FlightOperations.TimeSinceDepartureMinutes <= ContextDerived.RebookingWindowMinutes" },
+          { "label": "Fee calculation viable", "expression": "(PricingRules.ChangeFee + PricingRules.ExpectedFareDifference) >= 0" }
+        ]
+      },
+      {
+        "offerId": "Service_StandbyEnrollment",
+        "ruleName": "Elig_Service_Standby",
+        "conditions": [
+          { "label": "Standby capacity", "expression": "FlightOperations.StandbyCapacityRemaining >= 1" },
+          { "label": "Customer preference or urgency", "expression": "SupportInteraction.DetectedIntent IN ['Standby','MissedFlight']" }
+        ]
+      },
+      {
+        "offerId": "Service_FeeWaiverEvaluation",
+        "ruleName": "Elig_Service_Waiver",
+        "conditions": [
+          { "label": "Tier or compassion", "expression": "CustomerProfile.LoyaltyTier IN ['Gold','Platinum'] OR ContextDerived.CompassionPolicyEligible = true" },
+          { "label": "No-show penalty exists", "expression": "TripContext.FareRule_NoShowPenalty = true" }
+        ]
+      },
+      {
+        "offerId": "Service_MealVoucher",
+        "ruleName": "Elig_Service_MealVoucher",
+        "conditions": [
+          { "label": "Extended wait", "expression": "SupportInteraction.TimeToNextFlightHours >= 2.0" },
+          { "label": "Compassion or carrier", "expression": "ContextDerived.CauseCategory IN ['AirportQueue','CarrierDelay','ForceMajeure'] OR ContextDerived.CompassionPolicyEligible = true" }
+        ]
+      },
+      {
+        "offerId": "Service_HotelAssistance",
+        "ruleName": "Elig_Service_Hotel",
+        "conditions": [
+          { "label": "Overnight needed", "expression": "SupportInteraction.TimeToNextFlightHours >= 8.0" },
+          { "label": "Policy cap present", "expression": "PricingRules.HotelVoucherCap >= 50.0" }
+        ]
+      },
+      {
+        "offerId": "Service_GroundTransportVoucher",
+        "ruleName": "Elig_Service_Transport",
+        "conditions": [
+          { "label": "Airport-transport context", "expression": "SupportInteraction.TimeToNextFlightHours >= 1.0" },
+          { "label": "Cause category eligible", "expression": "ContextDerived.CauseCategory IN ['AirportQueue','CarrierDelay']" }
+        ]
+      },
+      {
+        "offerId": "Service_BaggageRecovery",
+        "ruleName": "Elig_Service_BaggageRecovery",
+        "conditions": [
+          { "label": "Checked baggage present", "expression": "TripContext.CheckedBagsCount >= 1" },
+          { "label": "Baggage located", "expression": "ContextDerived.BaggageLocated = true" }
+        ]
+      },
+      {
+        "offerId": "Service_LoungeAccess",
+        "ruleName": "Elig_Service_Lounge",
+        "conditions": [
+          { "label": "Airport lounge availability", "expression": "FlightOperations.AirportHasLounge = true" },
+          { "label": "Tier threshold", "expression": "CustomerProfile.LoyaltyTier IN ['Gold','Platinum']" },
+          { "label": "Waiting window", "expression": "SupportInteraction.TimeToNextFlightHours >= 2.0" }
+        ]
+      },
+      {
+        "offerId": "Service_InsuranceClaimAssist",
+        "ruleName": "Elig_Service_Insurance",
+        "conditions": [
+          { "label": "Insurance purchased", "expression": "TripContext.TravelInsuranceSelected = true" },
+          { "label": "Event time relevance", "expression": "FlightOperations.TimeSinceDepartureMinutes <= 1440" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_ExplainMissedFlightPolicy",
+        "treatments": [
+          { "treatmentId": "Treat_PolicyExplain_AgentScript", "expression": "SupportInteraction.ContactChannel = 'Voice' OR SupportInteraction.AgentEscalation = true" },
+          { "treatmentId": "Treat_PolicyExplain_EmailLink", "expression": "CustomerProfile.ConsentEmail = true" },
+          { "treatmentId": "Treat_PolicyExplain_ChatCard", "expression": "SupportInteraction.ContactChannel = 'Chat'" }
+        ]
+      },
+      {
+        "offerId": "Service_SameDayRebooking",
+        "treatments": [
+          { "treatmentId": "Treat_Rebook_AgentAction", "expression": "FlightOperations.NextFlightsSeatsAvailable >= 1" },
+          { "treatmentId": "Treat_Rebook_SMSConfirm", "expression": "CustomerProfile.ConsentSMS = true" },
+          { "treatmentId": "Treat_Rebook_EmailTicket", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_StandbyEnrollment",
+        "treatments": [
+          { "treatmentId": "Treat_Standby_AgentAction", "expression": "FlightOperations.StandbyCapacityRemaining >= 1" },
+          { "treatmentId": "Treat_Standby_SMSStatus", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_FeeWaiverEvaluation",
+        "treatments": [
+          { "treatmentId": "Treat_Waiver_AgentReview", "expression": "SupportInteraction.AgentEscalation = true" },
+          { "treatmentId": "Treat_Waiver_EmailOutcome", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_MealVoucher",
+        "treatments": [
+          { "treatmentId": "Treat_MealVoucher_AgentIssue", "expression": "SupportInteraction.TimeToNextFlightHours >= 2.0" },
+          { "treatmentId": "Treat_MealVoucher_SMSQR", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_HotelAssistance",
+        "treatments": [
+          { "treatmentId": "Treat_Hotel_AgentArrange", "expression": "SupportInteraction.TimeToNextFlightHours >= 8.0" },
+          { "treatmentId": "Treat_Hotel_EmailItinerary", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_GroundTransportVoucher",
+        "treatments": [
+          { "treatmentId": "Treat_Transport_AgentIssue", "expression": "ContextDerived.CauseCategory IN ['AirportQueue','CarrierDelay']" },
+          { "treatmentId": "Treat_Transport_SMSQR", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_BaggageRecovery",
+        "treatments": [
+          { "treatmentId": "Treat_Baggage_AgentAction", "expression": "TripContext.CheckedBagsCount >= 1" },
+          { "treatmentId": "Treat_Baggage_EmailStatus", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_LoungeAccess",
+        "treatments": [
+          { "treatmentId": "Treat_Lounge_AgentIssue", "expression": "CustomerProfile.LoyaltyTier IN ['Gold','Platinum']" },
+          { "treatmentId": "Treat_Lounge_SMSQR", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_InsuranceClaimAssist",
+        "treatments": [
+          { "treatmentId": "Treat_Insurance_AgentGuide", "expression": "TripContext.TravelInsuranceSelected = true" },
+          { "treatmentId": "Treat_Insurance_EmailForm", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate support session with CRM profile, PNR/ticket, flight ops, pricing, and context.",
+        "logic": [
+          "On support contact: call CRM, PNR/ticketing, operations, pricing, consent services",
+          "Cache TTL = 180 seconds"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Detect 'MissedFlight' and sub-intents (SameDayRebooking, Standby, WaiverRequest).",
+        "logic": [
+          "IF SupportInteraction.ReasonCategory = 'MissedFlight' AND FlightOperations.NoShowFlag = true THEN Intent = 'MissedFlight'",
+          "Sub-intents by keywords and signals"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility; prioritize service actions.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Mark service actions as must-consider before any discretionary support"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and applicability reasons.",
+        "logic": [
+          "Run Elig_* rules per offer",
+          "Set applicability reasons: ['OutOfWindow','NoInventory','TierNotEligible','PolicyConflict']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Service-first ranking for reprotection and care.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*AdaptivePropensity + w3*TimeCriticality + w4*ContextFit",
+          "ServicePriority: SameDayRebooking=100, Standby=95, PolicyExplain=90, WaiverEvaluation=85, BaggageRecovery=80, MealVoucher=70, HotelAssistance=68, LoungeAccess=60, TransportVoucher=58, InsuranceAssist=50",
+          "TimeCriticality bump if TimeToNextFlightHours <= 4"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply sensitivity caps and suppressions.",
+        "logic": [
+          "Apply GlobalFrequencyCaps",
+          "Apply OfferLevelCaps",
+          "Apply ContextualSuppressions for sensitive complaints",
+          "No more than one voucher-type action per session unless required"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select the best channel-specific treatment.",
+        "logic": [
+          "Filter by Treat_* eligibility",
+          "Preference: Agent workflows for execution; Email/SMS for confirmations"
+        ]
+      },
+      {
+        "id": "PriceAndWaiverCalculator",
+        "type": "Calculator",
+        "purpose": "Compute fees and apply waivers per policy.",
+        "logic": [
+          "TotalFee = ChangeFee + ExpectedFareDifference",
+          "If waiver eligible: reduce by tier thresholds or compassion policy"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Execute rebooking/standby/voucher; persist Interaction History.",
+        "logic": [
+          "Persist IH: CustomerID, PNR, OfferID, TreatmentID, Channel, Outcome, FeeApplied, WaiverAmount"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update propensities and suitability in missed-flight context.",
+        "logic": [
+          "Ingest outcomes and reasons",
+          "Boost suitability of timely rebooking actions when accepted"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS": { "maxPer48Hours": 2, "minIntervalHours": 12 },
+      "AgentPrompts": { "maxPerSupportSession": 3 }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_ExplainMissedFlightPolicy", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_SameDayRebooking", "maxPerSession": 1, "suppressOn": ["RebookingCompleted"] },
+      { "offerId": "Service_StandbyEnrollment", "maxPerSession": 1, "suppressOn": ["StandbyAdded"] },
+      { "offerId": "Service_FeeWaiverEvaluation", "maxPerSession": 1, "suppressOn": ["WaiverDecided"], "nonCommercial": true },
+      { "offerId": "Service_MealVoucher", "maxPerSession": 1, "suppressOn": ["VoucherIssued"] },
+      { "offerId": "Service_HotelAssistance", "maxPerSession": 1, "suppressOn": ["HotelArranged"] },
+      { "offerId": "Service_GroundTransportVoucher", "maxPerSession": 1, "suppressOn": ["VoucherIssued"] },
+      { "offerId": "Service_BaggageRecovery", "maxPerSession": 1, "suppressOn": ["BaggageForwardingInitiated"], "nonCommercial": true },
+      { "offerId": "Service_LoungeAccess", "maxPerSession": 1, "suppressOn": ["LoungePassIssued"] },
+      { "offerId": "Service_InsuranceClaimAssist", "maxPerSession": 1, "suppressOn": ["ClaimGuidanceProvided"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "SensitiveComplaintHigh", "rule": "If ComplaintSeverity = 'High', suppress non-essential offers and prioritize rebooking + care vouchers." },
+      { "context": "PolicyConflict", "rule": "Suppress actions violating fare rules or out-of-window constraints." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatInSession", "expression": "Do not repeat the same action within a single support session." },
+      { "ruleName": "ConfirmationsOnlyPostAction", "expression": "After execution, only send confirmation (SMS/Email); suppress new offers for 2 hours." }
+    ]
+  },
+  "channels": ["Voice", "Chat", "Email", "SMS", "AgentDesktop"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=ServiceAndRecovery, Group=MissedFlightSupport. Tag critical service actions and enable reason codes.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement Elig_* with data pages for ops and fare rules.",
+    "arbitrationModel": "Service-first ranking with time-criticality; select one primary reprotection action plus necessary care actions.",
+    "treatmentsMapping": "Provide agent workflow panels and confirmation templates (SMS/Email). Localize content to caller language.",
+    "contactPolicyConfig": "Apply caps and suppressions pre-arbitration; enforce non-repetition in sensitive contexts.",
+    "dataFlows": "Real-time calls to CRM, PNR/ticketing, ops status, inventory, pricing; persist IH for audit and learning."
+  }
+}
