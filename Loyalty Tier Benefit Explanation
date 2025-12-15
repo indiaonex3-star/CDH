@@ -1,0 +1,471 @@
+{
+  "useCase": {
+    "name": "Loyalty Portal: Points Check & Value Maximization",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "LoyaltyAndRetention",
+    "group": "PointsCheckEngagement",
+    "description": "Real-time NBA when a customer logs into their loyalty account to check points. Orchestrates points education, redemption guidance, targeted earn offers, status acceleration, partner conversions, and expiring points recovery."
+  },
+  "dataModels": {
+    "LoyaltyProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "LoyaltyID", "type": "string" },
+        { "name": "Tier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "TierPoints", "type": "number" },
+        { "name": "RedeemablePoints", "type": "number" },
+        { "name": "PointsExpiringIn30Days", "type": "number" },
+        { "name": "PointsExpiringIn90Days", "type": "number" },
+        { "name": "NextTierThreshold", "type": "number" },
+        { "name": "PointsToNextTier", "type": "number" },
+        { "name": "LastRedemptionDate", "type": "string", "format": "date" },
+        { "name": "LastEarnDate", "type": "string", "format": "date" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-210584",
+        "LoyaltyID": "LOY-90877122",
+        "Tier": "Silver",
+        "TierPoints": 13250,
+        "RedeemablePoints": 18400,
+        "PointsExpiringIn30Days": 1200,
+        "PointsExpiringIn90Days": 3400,
+        "NextTierThreshold": 20000,
+        "PointsToNextTier": 6750,
+        "LastRedemptionDate": "2025-11-20",
+        "LastEarnDate": "2025-12-01",
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "BehaviorSignals": {
+      "schema": [
+        { "name": "SessionEvent", "type": "string", "enum": ["Login", "PointsView", "RedemptionCatalogView", "VoucherWalletView"] },
+        { "name": "LastPageViewed", "type": "string", "enum": ["PointsSummary", "RedeemFlights", "RedeemPartners", "EarnPartners", "StatusProgress"] },
+        { "name": "AbandonedActionType", "type": "string", "enum": ["None", "Redemption", "VoucherGeneration", "StatusChallengeEnroll"] },
+        { "name": "AbandonedActionTimestamp", "type": "string", "format": "date-time" },
+        { "name": "PriceSensitivityScore", "type": "number" },
+        { "name": "TravelIntentNext90Days", "type": "boolean" },
+        { "name": "PreferredDestinations", "type": "array", "items": { "type": "string" } }
+      ],
+      "sample": {
+        "SessionEvent": "Login",
+        "LastPageViewed": "PointsSummary",
+        "AbandonedActionType": "Redemption",
+        "AbandonedActionTimestamp": "2025-12-10T16:10:00Z",
+        "PriceSensitivityScore": 0.48,
+        "TravelIntentNext90Days": true,
+        "PreferredDestinations": ["DEL", "BLR", "GOI"]
+      }
+    },
+    "UpcomingTrips": {
+      "schema": [
+        { "name": "HasUpcomingTrip", "type": "boolean" },
+        { "name": "NextTripDepartureDate", "type": "string", "format": "date" },
+        { "name": "NextTripOrigin", "type": "string" },
+        { "name": "NextTripDestination", "type": "string" },
+        { "name": "EligibleForPointsUpgrade", "type": "boolean" }
+      ],
+      "sample": {
+        "HasUpcomingTrip": true,
+        "NextTripDepartureDate": "2026-01-15",
+        "NextTripOrigin": "HYD",
+        "NextTripDestination": "DEL",
+        "EligibleForPointsUpgrade": true
+      }
+    },
+    "PricingAndRules": {
+      "schema": [
+        { "name": "MinPointsForFlightVoucher", "type": "number" },
+        { "name": "MinPointsForSeatUpgrade", "type": "number" },
+        { "name": "MinPointsForBaggageVoucher", "type": "number" },
+        { "name": "PartnerConversionRate", "type": "number" },
+        { "name": "ChallengePointsMultiplier", "type": "number" },
+        { "name": "DynamicValuePerPointINR", "type": "number" }
+      ],
+      "sample": {
+        "MinPointsForFlightVoucher": 15000,
+        "MinPointsForSeatUpgrade": 8000,
+        "MinPointsForBaggageVoucher": 6000,
+        "PartnerConversionRate": 0.7,
+        "ChallengePointsMultiplier": 1.5,
+        "DynamicValuePerPointINR": 0.5
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        { "name": "ExpiringRisk", "type": "number" },
+        { "name": "TierAccelerationPotential", "type": "number" },
+        { "name": "EligibleForStatusChallenge", "type": "boolean" },
+        { "name": "PartnerInterestSignals", "type": "array", "items": { "type": "string" } },
+        { "name": "CatalogRoutesAvailable", "type": "array", "items": { "type": "string" } },
+        { "name": "DomesticMarket", "type": "boolean" }
+      ],
+      "sample": {
+        "ExpiringRisk": 0.65,
+        "TierAccelerationPotential": 0.72,
+        "EligibleForStatusChallenge": true,
+        "PartnerInterestSignals": ["Hotel", "CardIssuer"],
+        "CatalogRoutesAvailable": ["HYD-DEL", "DEL-GOI"],
+        "DomesticMarket": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_PointsEducation", "name": "Points Education", "description": "Explain points types, expiry, best redemption values, and earning strategies." },
+    { "id": "Redeem_FlightVoucher", "name": "Redeem Flight Voucher", "description": "Convert points to a flight value voucher applicable on upcoming trips/routes." },
+    { "id": "Redeem_SeatUpgrade", "name": "Redeem for Seat Upgrade", "description": "Use points for seat upgrades on eligible upcoming flights." },
+    { "id": "Redeem_BaggageVoucher", "name": "Redeem Baggage Voucher", "description": "Use points to add checked baggage for next trip." },
+    { "id": "Earn_StatusChallenge", "name": "Status Challenge Enrollment", "description": "Enroll in a limited-time challenge to reach next tier faster." },
+    { "id": "Earn_PartnerConversion", "name": "Partner Points Conversion", "description": "Convert points to partner programs (hotel, card issuer) at promotional rates." },
+    { "id": "Earn_CoBrandCard", "name": "Co-branded Card Upsell", "description": "Apply for co-branded card to accelerate earning and get welcome bonus." },
+    { "id": "Service_ExpiryRecovery", "name": "Expiry Recovery Plan", "description": "Personalized plan to save expiring points through micro-redemptions." },
+    { "id": "Service_AbandonmentNudge", "name": "Redemption Abandonment Nudge", "description": "Help resume an abandoned redemption with simplified steps." },
+    { "id": "Service_LoungePerkInfo", "name": "Lounge Perk Information", "description": "Educate on lounge access rules and point-based access if eligible." }
+  ],
+  "treatments": {
+    "Service_PointsEducation": [
+      { "id": "Treat_PointsEducation_InlineTips", "channel": "Web/App", "placement": "PointsSummaryInline" },
+      { "id": "Treat_PointsEducation_EmailGuide", "channel": "Email", "placement": "PointsGuideEmail" }
+    ],
+    "Redeem_FlightVoucher": [
+      { "id": "Treat_RedeemFlight_CatalogTile", "channel": "Web/App", "placement": "RedemptionCatalogTile" },
+      { "id": "Treat_RedeemFlight_EmailLink", "channel": "Email", "placement": "VoucherRedemptionLink" }
+    ],
+    "Redeem_SeatUpgrade": [
+      { "id": "Treat_SeatUpgrade_UpcomingTripTile", "channel": "Web/App", "placement": "UpcomingTripTile" },
+      { "id": "Treat_SeatUpgrade_Push", "channel": "Push", "placement": "TripWindowPush" }
+    ],
+    "Redeem_BaggageVoucher": [
+      { "id": "Treat_BaggageVoucher_UpcomingTripTile", "channel": "Web/App", "placement": "UpcomingTripTile" },
+      { "id": "Treat_BaggageVoucher_Email", "channel": "Email", "placement": "BaggageVoucherEmail" }
+    ],
+    "Earn_StatusChallenge": [
+      { "id": "Treat_StatusChallenge_Banner", "channel": "Web/App", "placement": "TierProgressBanner" },
+      { "id": "Treat_StatusChallenge_Email", "channel": "Email", "placement": "ChallengeEnrollmentEmail" }
+    ],
+    "Earn_PartnerConversion": [
+      { "id": "Treat_PartnerConv_Tile", "channel": "Web/App", "placement": "PartnerConversionTile" },
+      { "id": "Treat_PartnerConv_Email", "channel": "Email", "placement": "PartnerConversionEmail" }
+    ],
+    "Earn_CoBrandCard": [
+      { "id": "Treat_CoBrandCard_Tile", "channel": "Web/App", "placement": "CardUpsellTile" },
+      { "id": "Treat_CoBrandCard_Email", "channel": "Email", "placement": "CardApplyEmail" }
+    ],
+    "Service_ExpiryRecovery": [
+      { "id": "Treat_ExpiryRecovery_InlinePlan", "channel": "Web/App", "placement": "ExpiryPlanInline" },
+      { "id": "Treat_ExpiryRecovery_Email", "channel": "Email", "placement": "ExpiryPlanEmail" }
+    ],
+    "Service_AbandonmentNudge": [
+      { "id": "Treat_Abandonment_ResumeCTA", "channel": "Web/App", "placement": "ResumeRedemptionCTA" },
+      { "id": "Treat_Abandonment_EmailNudge", "channel": "Email", "placement": "RedemptionReminderEmail" }
+    ],
+    "Service_LoungePerkInfo": [
+      { "id": "Treat_LoungeInfo_Inline", "channel": "Web/App", "placement": "PerksInline" },
+      { "id": "Treat_LoungeInfo_Email", "channel": "Email", "placement": "LoungeInfoEmail" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "LoyaltyProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_LoyaltyLogin", "expression": "BehaviorSignals.SessionEvent IN ['Login','PointsView']" },
+      { "ruleName": "Common_Eligibility_HasPointsOrTier", "expression": "LoyaltyProfile.RedeemablePoints > 0 OR LoyaltyProfile.TierPoints > 0" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(LoyaltyProfile.ConsentEmail OR LoyaltyProfile.ConsentSMS OR LoyaltyProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_PointsEducation",
+        "ruleName": "Elig_PointsEducation",
+        "conditions": [
+          { "label": "Points view intent", "expression": "BehaviorSignals.LastPageViewed = 'PointsSummary'" },
+          { "label": "Education gap", "expression": "(dateDiffDays(LoyaltyProfile.LastRedemptionDate, today()) > 90) OR (dateDiffDays(LoyaltyProfile.LastEarnDate, today()) > 60)" }
+        ]
+      },
+      {
+        "offerId": "Redeem_FlightVoucher",
+        "ruleName": "Elig_RedeemFlightVoucher",
+        "conditions": [
+          { "label": "Sufficient points", "expression": "LoyaltyProfile.RedeemablePoints >= PricingAndRules.MinPointsForFlightVoucher" },
+          { "label": "Route availability", "expression": "ContextDerived.CatalogRoutesAvailable CONTAINS concat(UpcomingTrips.NextTripOrigin, '-', UpcomingTrips.NextTripDestination) OR BehaviorSignals.PreferredDestinations LENGTH > 0" },
+          { "label": "Value fit", "expression": "PricingAndRules.DynamicValuePerPointINR >= 0.4" }
+        ]
+      },
+      {
+        "offerId": "Redeem_SeatUpgrade",
+        "ruleName": "Elig_RedeemSeatUpgrade",
+        "conditions": [
+          { "label": "Upcoming flight", "expression": "UpcomingTrips.HasUpcomingTrip = true" },
+          { "label": "Points threshold", "expression": "LoyaltyProfile.RedeemablePoints >= PricingAndRules.MinPointsForSeatUpgrade" },
+          { "label": "Upgrade eligibility", "expression": "UpcomingTrips.EligibleForPointsUpgrade = true" }
+        ]
+      },
+      {
+        "offerId": "Redeem_BaggageVoucher",
+        "ruleName": "Elig_RedeemBaggageVoucher",
+        "conditions": [
+          { "label": "Upcoming flight", "expression": "UpcomingTrips.HasUpcomingTrip = true" },
+          { "label": "Points threshold", "expression": "LoyaltyProfile.RedeemablePoints >= PricingAndRules.MinPointsForBaggageVoucher" }
+        ]
+      },
+      {
+        "offerId": "Earn_StatusChallenge",
+        "ruleName": "Elig_StatusChallenge",
+        "conditions": [
+          { "label": "Eligible for challenge", "expression": "ContextDerived.EligibleForStatusChallenge = true" },
+          { "label": "Tier acceleration potential", "expression": "ContextDerived.TierAccelerationPotential >= 0.6" },
+          { "label": "Points to next tier", "expression": "LoyaltyProfile.PointsToNextTier BETWEEN 3000 AND 15000" }
+        ]
+      },
+      {
+        "offerId": "Earn_PartnerConversion",
+        "ruleName": "Elig_PartnerConversion",
+        "conditions": [
+          { "label": "Partner interest", "expression": "ContextDerived.PartnerInterestSignals LENGTH > 0" },
+          { "label": "Conversion rate fit", "expression": "PricingAndRules.PartnerConversionRate >= 0.6" },
+          { "label": "Domestic preference alignment", "expression": "ContextDerived.DomesticMarket = true OR LoyaltyProfile.CountryOfResidence IN ['IN','NL','FR']" }
+        ]
+      },
+      {
+        "offerId": "Earn_CoBrandCard",
+        "ruleName": "Elig_CoBrandCard",
+        "conditions": [
+          { "label": "Tier or value", "expression": "LoyaltyProfile.Tier IN ['Silver','Gold','Platinum'] OR LoyaltyProfile.LifetimeValueScore >= 600" },
+          { "label": "No recent card upsell", "expression": "BehaviorSignals.AbandonedActionType != 'None' OR dateDiffDays(LoyaltyProfile.LastEarnDate, today()) > 30" }
+        ]
+      },
+      {
+        "offerId": "Service_ExpiryRecovery",
+        "ruleName": "Elig_ExpiryRecovery",
+        "conditions": [
+          { "label": "Expiring soon", "expression": "LoyaltyProfile.PointsExpiringIn30Days > 0 OR LoyaltyProfile.PointsExpiringIn90Days > 0" },
+          { "label": "Expiring risk score", "expression": "ContextDerived.ExpiringRisk >= 0.5" }
+        ]
+      },
+      {
+        "offerId": "Service_AbandonmentNudge",
+        "ruleName": "Elig_AbandonmentNudge",
+        "conditions": [
+          { "label": "Recent redemption abandonment", "expression": "BehaviorSignals.AbandonedActionType = 'Redemption' AND dateDiffDays(BehaviorSignals.AbandonedActionTimestamp, now()) <= 7" }
+        ]
+      },
+      {
+        "offerId": "Service_LoungePerkInfo",
+        "ruleName": "Elig_LoungePerkInfo",
+        "conditions": [
+          { "label": "Tier interest", "expression": "BehaviorSignals.LastPageViewed = 'StatusProgress'" },
+          { "label": "Tier threshold", "expression": "LoyaltyProfile.Tier IN ['Gold','Platinum'] OR LoyaltyProfile.PointsToNextTier <= 2000" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_PointsEducation",
+        "treatments": [
+          { "treatmentId": "Treat_PointsEducation_InlineTips", "expression": "BehaviorSignals.LastPageViewed = 'PointsSummary'" },
+          { "treatmentId": "Treat_PointsEducation_EmailGuide", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Redeem_FlightVoucher",
+        "treatments": [
+          { "treatmentId": "Treat_RedeemFlight_CatalogTile", "expression": "LoyaltyProfile.RedeemablePoints >= PricingAndRules.MinPointsForFlightVoucher" },
+          { "treatmentId": "Treat_RedeemFlight_EmailLink", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Redeem_SeatUpgrade",
+        "treatments": [
+          { "treatmentId": "Treat_SeatUpgrade_UpcomingTripTile", "expression": "UpcomingTrips.HasUpcomingTrip = true AND UpcomingTrips.EligibleForPointsUpgrade = true" },
+          { "treatmentId": "Treat_SeatUpgrade_Push", "expression": "LoyaltyProfile.ConsentPush = true AND BehaviorSignals.TravelIntentNext90Days = true" }
+        ]
+      },
+      {
+        "offerId": "Redeem_BaggageVoucher",
+        "treatments": [
+          { "treatmentId": "Treat_BaggageVoucher_UpcomingTripTile", "expression": "UpcomingTrips.HasUpcomingTrip = true" },
+          { "treatmentId": "Treat_BaggageVoucher_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Earn_StatusChallenge",
+        "treatments": [
+          { "treatmentId": "Treat_StatusChallenge_Banner", "expression": "ContextDerived.EligibleForStatusChallenge = true" },
+          { "treatmentId": "Treat_StatusChallenge_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Earn_PartnerConversion",
+        "treatments": [
+          { "treatmentId": "Treat_PartnerConv_Tile", "expression": "ContextDerived.PartnerInterestSignals LENGTH > 0" },
+          { "treatmentId": "Treat_PartnerConv_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Earn_CoBrandCard",
+        "treatments": [
+          { "treatmentId": "Treat_CoBrandCard_Tile", "expression": "true" },
+          { "treatmentId": "Treat_CoBrandCard_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ExpiryRecovery",
+        "treatments": [
+          { "treatmentId": "Treat_ExpiryRecovery_InlinePlan", "expression": "LoyaltyProfile.PointsExpiringIn30Days > 0 OR LoyaltyProfile.PointsExpiringIn90Days > 0" },
+          { "treatmentId": "Treat_ExpiryRecovery_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AbandonmentNudge",
+        "treatments": [
+          { "treatmentId": "Treat_Abandonment_ResumeCTA", "expression": "BehaviorSignals.AbandonedActionType = 'Redemption'" },
+          { "treatmentId": "Treat_Abandonment_EmailNudge", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_LoungePerkInfo",
+        "treatments": [
+          { "treatmentId": "Treat_LoungeInfo_Inline", "expression": "BehaviorSignals.LastPageViewed = 'StatusProgress'" },
+          { "treatmentId": "Treat_LoungeInfo_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with loyalty profile, behavior, upcoming trips, pricing/rules, and derived context.",
+        "logic": [
+          "On login: load LoyaltyProfile, BehaviorSignals, UpcomingTrips, PricingAndRules",
+          "Compute ContextDerived (ExpiringRisk, TierAccelerationPotential, EligibleForStatusChallenge)"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm points check intent and sub-intents (redeem vs earn vs tier).",
+        "logic": [
+          "IF BehaviorSignals.SessionEvent IN ['Login','PointsView'] THEN Intent = 'PointsCheck'",
+          "Sub-intents from LastPageViewed: PointsSummary, RedemptionCatalogView, StatusProgress"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility and prioritize service/expiry education first.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Service-first: PointsEducation and ExpiryRecovery considered before commercial earn/upsell"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and applicability reasons.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set applicability reasons: ['InsufficientPoints','NoUpcomingTrip','NotEligibleForChallenge','LowConversionRate']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by customer value, urgency (expiry), and relevance to intent.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*AdaptivePropensity + w3*ValuePerPoint + w4*ExpiryUrgency + w5*IntentAlignment",
+          "Boost redemption offers if UpcomingTrips.HasUpcomingTrip = true",
+          "Boost ExpiryRecovery when ExpiringRisk >= 0.5"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-specific treatment aligned to portal context.",
+        "logic": [
+          "Filter by treatment eligibility",
+          "Prefer inline tiles on PointsSummary; email/push for follow-ups tied to trips"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Enforce cadence, suppression, and recency rules.",
+        "logic": [
+          "Apply GlobalFrequencyCaps and OfferLevelCaps",
+          "Suppress CoBrandCard if recent email sent within 14 days"
+        ]
+      },
+      {
+        "id": "Calculator_ValueAndThresholds",
+        "type": "Calculator",
+        "purpose": "Compute value-per-point and thresholds for personalized guidance.",
+        "logic": [
+          "ValuePerPoint = PricingAndRules.DynamicValuePerPointINR",
+          "Compute remaining points to next tier and show best-path recommendations"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment and persist Interaction History.",
+        "logic": [
+          "Persist IH: CustomerID, LoyaltyID, OfferID, TreatmentID, Channel, Outcome, ReasonCodes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update propensities and suitability for loyalty context.",
+        "logic": [
+          "Ingest impressions, clicks, redemptions, enrollments",
+          "Boost suitability of offers aligned to recent customer actions"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_Push": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "InPortalTiles": { "maxDistinctOffersPerSession": 3, "noRepeatWithinPage": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_PointsEducation", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Redeem_FlightVoucher", "maxPerSession": 1, "suppressOn": ["VoucherRedeemed"] },
+      { "offerId": "Redeem_SeatUpgrade", "maxPerSession": 1, "suppressOn": ["UpgradeRedeemed"] },
+      { "offerId": "Redeem_BaggageVoucher", "maxPerSession": 1, "suppressOn": ["BaggageVoucherRedeemed"] },
+      { "offerId": "Earn_StatusChallenge", "maxPerQuarter": 1, "suppressOn": ["ChallengeEnrolled"] },
+      { "offerId": "Earn_PartnerConversion", "maxPerMonth": 1, "suppressOn": ["PartnerConversionCompleted"] },
+      { "offerId": "Earn_CoBrandCard", "maxPer14Days": 1, "suppressOn": ["CardApplicationStarted"] },
+      { "offerId": "Service_ExpiryRecovery", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_AbandonmentNudge", "maxPer7Days": 1, "suppressOn": ["RedemptionResumed"] },
+      { "offerId": "Service_LoungePerkInfo", "maxPerSession": 1, "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "InsufficientPoints", "rule": "Suppress redemption offers when RedeemablePoints < minimal thresholds; show earn guidance." },
+      { "context": "NoUpcomingTrip", "rule": "Suppress trip-linked redemptions; show partner conversion and education." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatWithinPage", "expression": "Do not repeat the same offer on the PointsSummary page in a single session." },
+      { "ruleName": "PostRedemptionSuppression", "expression": "After redemption, suppress additional redemption offers for 72 hours; only show trip-related confirmations." }
+    ]
+  },
+  "channels": ["Web", "App", "Email", "SMS", "Push", "Agent"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=LoyaltyAndRetention, Group=PointsCheckEngagement. Tag education and expiry as service-type actions.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* rules with reason codes and thresholds.",
+    "arbitrationModel": "Service-first ranking then redemption aligned to upcoming trips and expiring points; incorporate value-per-point.",
+    "treatmentsMapping": "Define inline tiles/banners for portal; email follow-ups for enrollments and trip-linked redemptions; optional push for near-trip windows.",
+    "contactPolicyConfig": "Apply global and action-level caps pre-arbitration; enforce contextual suppressions for low points/no trips.",
+    "dataFlows": "Real-time loyalty profile, catalog availability, upcoming trip service, and partner feeds; persist IH to drive adaptive learning and audit."
+  }
+}
