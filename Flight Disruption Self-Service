@@ -1,0 +1,485 @@
+{
+  "useCase": {
+    "name": "Flight Status Check during Delay/Cancellation",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "ServiceAndRecovery",
+    "group": "DisruptionStatusSupport",
+    "description": "Service-first NBA triggered when a customer checks flight status during an operational delay or cancellation. Orchestrates self-serve reprotection, alternate routes, vouchers, priority care, baggage options, and real-time communications."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "Email", "type": "string" },
+        { "name": "Mobile", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "LifetimeValueScore", "type": "number" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-334210",
+        "FullName": "Ananya Gupta",
+        "Email": "ananya@example.com",
+        "Mobile": "+91-9001112222",
+        "LoyaltyTier": "Gold",
+        "LifetimeValueScore": 785.4,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": true,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "TripContext": {
+      "schema": [
+        { "name": "PNR", "type": "string" },
+        { "name": "TicketNumber", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] },
+        { "name": "HasConnectingFlight", "type": "boolean" },
+        { "name": "ConnectionTimeMinutes", "type": "integer" },
+        { "name": "CheckedBagsCount", "type": "integer" },
+        { "name": "TravelInsuranceSelected", "type": "boolean" }
+      ],
+      "sample": {
+        "PNR": "R5T9QM",
+        "TicketNumber": "235-5566778899",
+        "Origin": "HYD",
+        "Destination": "BLR",
+        "DepartureDateTime": "2026-07-22T17:40:00+05:30",
+        "CabinClass": "Economy",
+        "FareBrand": "Flex",
+        "HasConnectingFlight": false,
+        "ConnectionTimeMinutes": 0,
+        "CheckedBagsCount": 1,
+        "TravelInsuranceSelected": true
+      }
+    },
+    "FlightOperations": {
+      "schema": [
+        { "name": "FlightNumber", "type": "string" },
+        { "name": "SegmentDate", "type": "string", "format": "date" },
+        { "name": "FlightStatus", "type": "string", "enum": ["Scheduled", "Boarding", "Delayed", "Cancelled", "Departed"] },
+        { "name": "DelayMinutes", "type": "integer" },
+        { "name": "DisruptionCauseCategory", "type": "string", "enum": ["Carrier", "Weather", "ATC", "AirportOps", "ForceMajeure"] },
+        { "name": "NextFlightsSeatsAvailable", "type": "integer" },
+        { "name": "AlternateRouteAvailable", "type": "boolean" },
+        { "name": "StandbyCapacityRemaining", "type": "integer" },
+        { "name": "LoungeCapacityRemaining", "type": "integer" }
+      ],
+      "sample": {
+        "FlightNumber": "AI232",
+        "SegmentDate": "2026-07-22",
+        "FlightStatus": "Delayed",
+        "DelayMinutes": 85,
+        "DisruptionCauseCategory": "Weather",
+        "NextFlightsSeatsAvailable": 9,
+        "AlternateRouteAvailable": true,
+        "StandbyCapacityRemaining": 6,
+        "LoungeCapacityRemaining": 10
+      }
+    },
+    "StatusCheckSignals": {
+      "schema": [
+        { "name": "Channel", "type": "string", "enum": ["Web", "App"] },
+        { "name": "SessionEvent", "type": "string", "enum": ["StatusCheckStart", "StatusCheckRefresh"] },
+        { "name": "GeoAtAirport", "type": "boolean" },
+        { "name": "TimeToDepartureMinutes", "type": "integer" },
+        { "name": "AppPushEnabled", "type": "boolean" }
+      ],
+      "sample": {
+        "Channel": "App",
+        "SessionEvent": "StatusCheckRefresh",
+        "GeoAtAirport": true,
+        "TimeToDepartureMinutes": 55,
+        "AppPushEnabled": true
+      }
+    },
+    "PolicyPricing": {
+      "schema": [
+        { "name": "MealVoucherAmount", "type": "number" },
+        { "name": "HotelVoucherCap", "type": "number" },
+        { "name": "TransportVoucherAmount", "type": "number" },
+        { "name": "SameDayChangeFee", "type": "number" },
+        { "name": "DynamicPriceMultiplier", "type": "number" }
+      ],
+      "sample": {
+        "MealVoucherAmount": 12.0,
+        "HotelVoucherCap": 80.0,
+        "TransportVoucherAmount": 10.0,
+        "SameDayChangeFee": 0.0,
+        "DynamicPriceMultiplier": 1.0
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        { "name": "CompassionPolicyEligible", "type": "boolean" },
+        { "name": "TierCarePriority", "type": "string", "enum": ["Normal", "Priority", "VIP"] },
+        { "name": "International", "type": "boolean" },
+        { "name": "RebookingWindowMinutes", "type": "integer" },
+        { "name": "InsuranceClaimEligible", "type": "boolean" }
+      ],
+      "sample": {
+        "CompassionPolicyEligible": true,
+        "TierCarePriority": "Priority",
+        "International": false,
+        "RebookingWindowMinutes": 180,
+        "InsuranceClaimEligible": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_ExplainDisruption", "name": "Explain Disruption & Live Updates", "description": "Clear reason codes, expected timelines, and what happens next." },
+    { "id": "Service_SameDayRebooking", "name": "Same-Day Rebooking", "description": "Self-serve rebooking to the next available flight within policy window." },
+    { "id": "Service_AlternateRoute", "name": "Alternate Route Proposal", "description": "Offer viable reroute options to reach destination sooner." },
+    { "id": "Service_StandbyEnrollment", "name": "Standby Enrollment", "description": "Add to standby list for earlier departure." },
+    { "id": "Service_CareVouchers", "name": "Care Vouchers (Meal/Hotel/Transport)", "description": "Issue vouchers based on delay duration and cause category." },
+    { "id": "Service_LoungeAccess", "name": "Courtesy Lounge Access", "description": "Provide lounge access during extended waits for eligible tiers." },
+    { "id": "Service_BaggageOptions", "name": "Baggage Options", "description": "Hold, retrieve, or re-tag bags based on new itinerary." },
+    { "id": "Service_InsuranceAssist", "name": "Insurance Claim Assistance", "description": "Guide claim process if insured and eligible." },
+    { "id": "Service_ProactivePush", "name": "Proactive Push Notifications", "description": "Enable real-time push updates for gate/time changes." },
+    { "id": "Service_AgentCallBack", "name": "Agent Callback", "description": "Prioritized callback for complex reprotection." }
+  ],
+  "treatments": {
+    "Service_ExplainDisruption": [
+      { "id": "Treat_Explain_InlineBanner", "channel": "Web/App", "placement": "StatusInlineBanner" },
+      { "id": "Treat_Explain_FAQModal", "channel": "Web/App", "placement": "DisruptionFAQModal" }
+    ],
+    "Service_SameDayRebooking": [
+      { "id": "Treat_Rebook_InlineFlow", "channel": "Web/App", "placement": "RebookInlineFlow" },
+      { "id": "Treat_Rebook_SMSConfirm", "channel": "SMS", "placement": "RebookingConfirmation" },
+      { "id": "Treat_Rebook_EmailTicket", "channel": "Email", "placement": "TicketUpdateEmail" }
+    ],
+    "Service_AlternateRoute": [
+      { "id": "Treat_AltRoute_InlineChooser", "channel": "Web/App", "placement": "AltRouteChooser" },
+      { "id": "Treat_AltRoute_Email", "channel": "Email", "placement": "AltRouteOfferEmail" }
+    ],
+    "Service_StandbyEnrollment": [
+      { "id": "Treat_Standby_Inline", "channel": "Web/App", "placement": "StandbyToggle" },
+      { "id": "Treat_Standby_SMS", "channel": "SMS", "placement": "StandbyUpdates" }
+    ],
+    "Service_CareVouchers": [
+      { "id": "Treat_Voucher_InlineIssue", "channel": "Web/App", "placement": "VoucherIssuePanel" },
+      { "id": "Treat_Voucher_SMSQR", "channel": "SMS", "placement": "VoucherQRDelivery" }
+    ],
+    "Service_LoungeAccess": [
+      { "id": "Treat_Lounge_InlinePass", "channel": "Web/App", "placement": "LoungePassToggle" },
+      { "id": "Treat_Lounge_SMSQR", "channel": "SMS", "placement": "LoungeQRDelivery" }
+    ],
+    "Service_BaggageOptions": [
+      { "id": "Treat_Baggage_Inline", "channel": "Web/App", "placement": "BaggageOptionsPanel" },
+      { "id": "Treat_Baggage_EmailStatus", "channel": "Email", "placement": "BaggageStatusEmail" }
+    ],
+    "Service_InsuranceAssist": [
+      { "id": "Treat_Insurance_InlineGuide", "channel": "Web/App", "placement": "InsuranceGuidePanel" },
+      { "id": "Treat_Insurance_EmailForm", "channel": "Email", "placement": "ClaimFormLink" }
+    ],
+    "Service_ProactivePush": [
+      { "id": "Treat_Push_Enable", "channel": "App", "placement": "EnablePushToggle" }
+    ],
+    "Service_AgentCallBack": [
+      { "id": "Treat_Callback_Request", "channel": "Web/App", "placement": "CallbackRequestTile" },
+      { "id": "Treat_Callback_SMSConfirm", "channel": "SMS", "placement": "CallbackConfirmation" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_ActivePNR", "expression": "TripContext.PNR != null AND TripContext.DepartureDateTime > now()" },
+      { "ruleName": "Common_Eligibility_StatusCheckContext", "expression": "StatusCheckSignals.SessionEvent IN ['StatusCheckStart','StatusCheckRefresh']" },
+      { "ruleName": "Common_Eligibility_DisruptionDetected", "expression": "FlightOperations.FlightStatus IN ['Delayed','Cancelled']" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_ExplainDisruption",
+        "ruleName": "Elig_ExplainDisruption",
+        "conditions": [
+          { "label": "Always in disruption", "expression": "FlightOperations.FlightStatus IN ['Delayed','Cancelled']" }
+        ]
+      },
+      {
+        "offerId": "Service_SameDayRebooking",
+        "ruleName": "Elig_SameDayRebooking",
+        "conditions": [
+          { "label": "Seats available", "expression": "FlightOperations.NextFlightsSeatsAvailable >= 1" },
+          { "label": "Within rebooking window", "expression": "StatusCheckSignals.TimeToDepartureMinutes <= ContextDerived.RebookingWindowMinutes" },
+          { "label": "Fare allows change or is cancelled", "expression": "TripContext.FareBrand IN ['Flex','FlexPlus','Premium'] OR FlightOperations.FlightStatus = 'Cancelled'" }
+        ]
+      },
+      {
+        "offerId": "Service_AlternateRoute",
+        "ruleName": "Elig_AlternateRoute",
+        "conditions": [
+          { "label": "Alternate route available", "expression": "FlightOperations.AlternateRouteAvailable = true" },
+          { "label": "Time criticality", "expression": "StatusCheckSignals.TimeToDepartureMinutes <= 240" }
+        ]
+      },
+      {
+        "offerId": "Service_StandbyEnrollment",
+        "ruleName": "Elig_Standby",
+        "conditions": [
+          { "label": "Standby capacity", "expression": "FlightOperations.StandbyCapacityRemaining >= 1" },
+          { "label": "Customer at airport or near", "expression": "StatusCheckSignals.GeoAtAirport = true OR StatusCheckSignals.TimeToDepartureMinutes <= 120" }
+        ]
+      },
+      {
+        "offerId": "Service_CareVouchers",
+        "ruleName": "Elig_CareVouchers",
+        "conditions": [
+          { "label": "Delay threshold", "expression": "FlightOperations.DelayMinutes >= 60 OR FlightOperations.FlightStatus = 'Cancelled'" },
+          { "label": "Cause category eligible", "expression": "FlightOperations.DisruptionCauseCategory IN ['Carrier','AirportOps','ATC','Weather'] OR ContextDerived.CompassionPolicyEligible = true" }
+        ]
+      },
+      {
+        "offerId": "Service_LoungeAccess",
+        "ruleName": "Elig_Lounge",
+        "conditions": [
+          { "label": "Capacity and tier", "expression": "FlightOperations.LoungeCapacityRemaining >= 3 AND CustomerProfile.LoyaltyTier IN ['Gold','Platinum']" },
+          { "label": "Wait duration", "expression": "FlightOperations.DelayMinutes >= 60" }
+        ]
+      },
+      {
+        "offerId": "Service_BaggageOptions",
+        "ruleName": "Elig_BaggageOptions",
+        "conditions": [
+          { "label": "Checked bags present", "expression": "TripContext.CheckedBagsCount >= 1" },
+          { "label": "Reprotection triggered", "expression": "FlightOperations.FlightStatus IN ['Delayed','Cancelled']" }
+        ]
+      },
+      {
+        "offerId": "Service_InsuranceAssist",
+        "ruleName": "Elig_InsuranceAssist",
+        "conditions": [
+          { "label": "Insurance selected", "expression": "TripContext.TravelInsuranceSelected = true" },
+          { "label": "Claim eligible", "expression": "ContextDerived.InsuranceClaimEligible = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ProactivePush",
+        "ruleName": "Elig_ProactivePush",
+        "conditions": [
+          { "label": "App push enabled", "expression": "StatusCheckSignals.AppPushEnabled = true AND CustomerProfile.ConsentPush = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AgentCallBack",
+        "ruleName": "Elig_AgentCallback",
+        "conditions": [
+          { "label": "Complex scenario", "expression": "(TripContext.HasConnectingFlight = true AND TripContext.ConnectionTimeMinutes < 60) OR FlightOperations.FlightStatus = 'Cancelled'" },
+          { "label": "Tier care or VIP", "expression": "ContextDerived.TierCarePriority IN ['Priority','VIP']" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_ExplainDisruption",
+        "treatments": [
+          { "treatmentId": "Treat_Explain_InlineBanner", "expression": "true" },
+          { "treatmentId": "Treat_Explain_FAQModal", "expression": "StatusCheckSignals.SessionEvent = 'StatusCheckRefresh' AND FlightOperations.DelayMinutes >= 60" }
+        ]
+      },
+      {
+        "offerId": "Service_SameDayRebooking",
+        "treatments": [
+          { "treatmentId": "Treat_Rebook_InlineFlow", "expression": "FlightOperations.NextFlightsSeatsAvailable >= 1" },
+          { "treatmentId": "Treat_Rebook_SMSConfirm", "expression": "CustomerProfile.ConsentSMS = true" },
+          { "treatmentId": "Treat_Rebook_EmailTicket", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AlternateRoute",
+        "treatments": [
+          { "treatmentId": "Treat_AltRoute_InlineChooser", "expression": "FlightOperations.AlternateRouteAvailable = true" },
+          { "treatmentId": "Treat_AltRoute_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_StandbyEnrollment",
+        "treatments": [
+          { "treatmentId": "Treat_Standby_Inline", "expression": "FlightOperations.StandbyCapacityRemaining >= 1" },
+          { "treatmentId": "Treat_Standby_SMS", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_CareVouchers",
+        "treatments": [
+          { "treatmentId": "Treat_Voucher_InlineIssue", "expression": "FlightOperations.DelayMinutes >= 60 OR FlightOperations.FlightStatus = 'Cancelled'" },
+          { "treatmentId": "Treat_Voucher_SMSQR", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_LoungeAccess",
+        "treatments": [
+          { "treatmentId": "Treat_Lounge_InlinePass", "expression": "FlightOperations.LoungeCapacityRemaining >= 3 AND CustomerProfile.LoyaltyTier IN ['Gold','Platinum']" },
+          { "treatmentId": "Treat_Lounge_SMSQR", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Service_BaggageOptions",
+        "treatments": [
+          { "treatmentId": "Treat_Baggage_Inline", "expression": "TripContext.CheckedBagsCount >= 1" },
+          { "treatmentId": "Treat_Baggage_EmailStatus", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_InsuranceAssist",
+        "treatments": [
+          { "treatmentId": "Treat_Insurance_InlineGuide", "expression": "TripContext.TravelInsuranceSelected = true" },
+          { "treatmentId": "Treat_Insurance_EmailForm", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ProactivePush",
+        "treatments": [
+          { "treatmentId": "Treat_Push_Enable", "expression": "StatusCheckSignals.AppPushEnabled = true AND CustomerProfile.ConsentPush = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AgentCallBack",
+        "treatments": [
+          { "treatmentId": "Treat_Callback_Request", "expression": "ContextDerived.TierCarePriority IN ['Priority','VIP']" },
+          { "treatmentId": "Treat_Callback_SMSConfirm", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with customer profile, PNR/ticket, flight ops status, policy/pricing, and signals.",
+        "logic": [
+          "On status check: load CustomerProfile, TripContext, FlightOperations, PolicyPricing, StatusCheckSignals",
+          "Derive ContextDerived (care priority, rebooking window, insurance eligibility)"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm disruption intent and categorize delay vs cancellation.",
+        "logic": [
+          "IF FlightOperations.FlightStatus IN ['Delayed','Cancelled'] THEN Intent = 'DisruptionCare'",
+          "Sub-categories by DisruptionCauseCategory and DelayMinutes"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility; prioritize essential service actions first.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Must-show: ExplainDisruption, SameDayRebooking (if eligible), CareVouchers (if thresholds met)"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate offers and set applicability reasons.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set reasons: ['NoSeats','OutOfWindow','TierNotEligible','CapacityLow','NotAtAirport']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by urgency and care priority.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*Urgency(DelayMinutes) + w3*CarePriority + w4*OperationalFeasibility",
+          "ServicePriority order: SameDayRebooking=100, ExplainDisruption=95, AlternateRoute=90, CareVouchers=85, Standby=80, BaggageOptions=75, LoungeAccess=70, InsuranceAssist=65, ProactivePush=60, AgentCallback=58"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Pick channel-appropriate treatments with lowest friction.",
+        "logic": [
+          "Prefer inline flows in Web/App; SMS for confirmations and QR vouchers",
+          "Cap to one voucher issuance and one reprotection flow per session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply cadence, sensitivity, and suppression policies.",
+        "logic": [
+          "Apply global caps, offer-level caps, contextual suppressions (e.g., severe weather bulk disruptions)",
+          "Suppress non-essential prompts if cancellation requires agent reissue"
+        ]
+      },
+      {
+        "id": "CareCalculator",
+        "type": "Calculator",
+        "purpose": "Compute voucher eligibility and fees per policy.",
+        "logic": [
+          "If DelayMinutes >= thresholds => issue Meal/Hotel/Transport per cause category",
+          "SameDayChangeFee waived if cancellation"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Execute reprotection, issue vouchers, confirm standby, and persist IH.",
+        "logic": [
+          "Persist IH: CustomerID, PNR, OfferID, TreatmentID, Channel, Outcome, ReasonCodes, DelayMinutes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Improve propensities by cause category and delay windows.",
+        "logic": [
+          "Ingest accept/decline of rebooking/alt-route/vouchers",
+          "Boost suitability of actions converting for similar disruption profiles"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer3Days": 2, "minIntervalHours": 12 },
+      "SMS_Push": { "maxPer24Hours": 3, "minIntervalHours": 4 },
+      "InSessionPrompts": { "maxPerSession": 3, "noRepeatWithinStep": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_ExplainDisruption", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_SameDayRebooking", "maxPerSession": 1, "suppressOn": ["RebookingCompleted"], "nonCommercial": true },
+      { "offerId": "Service_AlternateRoute", "maxPerSession": 1, "suppressOn": ["AltRouteSelected"], "nonCommercial": true },
+      { "offerId": "Service_StandbyEnrollment", "maxPerSession": 1, "suppressOn": ["StandbyAdded"], "nonCommercial": true },
+      { "offerId": "Service_CareVouchers", "maxPerSession": 1, "suppressOn": ["VoucherIssued"], "nonCommercial": true },
+      { "offerId": "Service_LoungeAccess", "maxPerSession": 1, "suppressOn": ["LoungePassIssued"], "nonCommercial": true },
+      { "offerId": "Service_BaggageOptions", "maxPerSession": 1, "suppressOn": ["BaggageActionStarted"], "nonCommercial": true },
+      { "offerId": "Service_InsuranceAssist", "maxPerSession": 1, "suppressOn": ["ClaimGuidanceProvided"], "nonCommercial": true },
+      { "offerId": "Service_ProactivePush", "maxPerSession": 1, "suppressOn": ["PushEnabled"], "nonCommercial": true },
+      { "offerId": "Service_AgentCallBack", "maxPerSession": 1, "suppressOn": ["CallbackScheduled"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "SevereWeatherMassDisruption", "rule": "Limit offers to ExplainDisruption, SameDayRebooking (if viable), and CareVouchers; suppress lounge and alt-route if capacity constrained." },
+      { "context": "CancellationReissueRequired", "rule": "Route to AgentCallback; suppress self-serve flows that cannot reissue ticket." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatFlowInSession", "expression": "Do not re-offer the same rebooking or voucher flow within a single session." },
+      { "ruleName": "PostRebookingQuiet", "expression": "After rebooking completion, suppress further disruption offers for 3 hours; send confirmations only." }
+    ]
+  },
+  "channels": ["Web", "App", "Email", "SMS", "Push", "Agent"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=ServiceAndRecovery, Group=DisruptionStatusSupport. Tag core service actions and enable reason codes.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* rules; ensure operational checks for seats, capacity, and cause category.",
+    "arbitrationModel": "Urgency- and care-priority-driven ranking; surface rebooking and essential care first; then alternate route and standby.",
+    "treatmentsMapping": "Inline Web/App flows for rebooking and vouchers; SMS/Email confirmations; push toggle for live updates.",
+    "contactPolicyConfig": "Apply global and offer-level caps pre-arbitration; enforce contextual suppressions in mass disruptions.",
+    "dataFlows": "Real-time flight ops, inventory, voucher policy, and PNR services; persist IH for audit and adaptive learning."
+  }
+}
