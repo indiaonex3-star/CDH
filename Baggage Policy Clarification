@@ -1,0 +1,515 @@
+{
+  "useCase": {
+    "name": "Support Contact: Baggage Allowance Inquiry",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "ServiceAndRecovery",
+    "group": "BaggageAllowanceSupport",
+    "description": "Service-first NBA for customers contacting support about baggage allowance (voice/chat/WhatsApp/email). Resolves policy questions, calculates fees, evaluates waivers, and presents contextually relevant baggage solutions and bundles."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "LifetimeValueScore", "type": "number" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentWhatsApp", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "PriceSensitivityScore", "type": "number" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-541203",
+        "FullName": "Alex Janssen",
+        "LoyaltyTier": "Silver",
+        "LifetimeValueScore": 680.5,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentWhatsApp": true,
+        "CountryOfResidence": "NL",
+        "PriceSensitivityScore": 0.58,
+        "BlacklistFlag": false
+      }
+    },
+    "TripContext": {
+      "schema": [
+        { "name": "PNR", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] },
+        { "name": "NumberOfPassengers", "type": "integer" },
+        { "name": "HasInfant", "type": "boolean" },
+        { "name": "PaidBaggageQty", "type": "integer" },
+        { "name": "CarryOnAllowanceKg", "type": "number" },
+        { "name": "CheckedAllowanceKg", "type": "number" },
+        { "name": "SportsEquipmentAdded", "type": "boolean" },
+        { "name": "PetInCabin", "type": "boolean" },
+        { "name": "International", "type": "boolean" }
+      ],
+      "sample": {
+        "PNR": "Q3M7ZP",
+        "Origin": "AMS",
+        "Destination": "BCN",
+        "DepartureDateTime": "2026-03-12T09:20:00Z",
+        "CabinClass": "Economy",
+        "FareBrand": "Basic",
+        "NumberOfPassengers": 2,
+        "HasInfant": false,
+        "PaidBaggageQty": 0,
+        "CarryOnAllowanceKg": 8.0,
+        "CheckedAllowanceKg": 0.0,
+        "SportsEquipmentAdded": false,
+        "PetInCabin": false,
+        "International": false
+      }
+    },
+    "OperationsInventory": {
+      "schema": [
+        { "name": "FlightNumber", "type": "string" },
+        { "name": "SegmentDate", "type": "string", "format": "date" },
+        { "name": "ForecastLoadFactor", "type": "number" },
+        { "name": "BaggageInventoryRemaining", "type": "integer" },
+        { "name": "PriorityBaggageCapacityRemaining", "type": "integer" },
+        { "name": "DelayRiskScore", "type": "number" },
+        { "name": "AirportSupportsPriorityBaggage", "type": "boolean" }
+      ],
+      "sample": {
+        "FlightNumber": "HV6731",
+        "SegmentDate": "2026-03-12",
+        "ForecastLoadFactor": 0.81,
+        "BaggageInventoryRemaining": 74,
+        "PriorityBaggageCapacityRemaining": 25,
+        "DelayRiskScore": 0.19,
+        "AirportSupportsPriorityBaggage": true
+      }
+    },
+    "SupportInteraction": {
+      "schema": [
+        { "name": "ContactChannel", "type": "string", "enum": ["Voice", "Chat", "WhatsApp", "Email"] },
+        { "name": "ReasonCategory", "type": "string", "enum": ["BaggageAllowance", "Fees", "PolicyClarification", "Other"] },
+        { "name": "DetectedIntent", "type": "string", "enum": ["AllowanceQuery", "OverweightRisk", "AddBagIntent", "SportsEquipmentIntent"] },
+        { "name": "AgentEscalation", "type": "boolean" },
+        { "name": "TimeToDepartureHours", "type": "integer" },
+        { "name": "Language", "type": "string" },
+        { "name": "PolicyShown", "type": "boolean" },
+        { "name": "WaiverConsideration", "type": "boolean" },
+        { "name": "PriorComplaintsCount", "type": "integer" }
+      ],
+      "sample": {
+        "ContactChannel": "Chat",
+        "ReasonCategory": "BaggageAllowance",
+        "DetectedIntent": "AllowanceQuery",
+        "AgentEscalation": false,
+        "TimeToDepartureHours": 48,
+        "Language": "EN",
+        "PolicyShown": true,
+        "WaiverConsideration": false,
+        "PriorComplaintsCount": 1
+      }
+    },
+    "PricingRules": {
+      "schema": [
+        { "name": "AncillaryBasePrice_Baggage", "type": "number" },
+        { "name": "AncillaryBasePrice_OverweightFeePerKg", "type": "number" },
+        { "name": "AncillaryBasePrice_SportsEquipment", "type": "number" },
+        { "name": "AncillaryBasePrice_PriorityBaggage", "type": "number" },
+        { "name": "AncillaryBasePrice_CabinBagUpgrade", "type": "number" },
+        { "name": "DynamicPriceMultiplier", "type": "number" },
+        { "name": "BundleDiscountPercent", "type": "number" }
+      ],
+      "sample": {
+        "AncillaryBasePrice_Baggage": 28.0,
+        "AncillaryBasePrice_OverweightFeePerKg": 12.0,
+        "AncillaryBasePrice_SportsEquipment": 35.0,
+        "AncillaryBasePrice_PriorityBaggage": 9.0,
+        "AncillaryBasePrice_CabinBagUpgrade": 14.0,
+        "DynamicPriceMultiplier": 1.08,
+        "BundleDiscountPercent": 10.0
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        { "name": "DestinationCluster", "type": "string", "enum": ["Beach", "Ski", "City", "BusinessHub", "Other"] },
+        { "name": "OverweightRiskKg", "type": "number" },
+        { "name": "EligibleForWaiver", "type": "boolean" },
+        { "name": "RegulatoryRestrictions", "type": "array", "items": { "type": "string" } },
+        { "name": "BundleEligible", "type": "boolean" },
+        { "name": "HouseholdTravel", "type": "boolean" }
+      ],
+      "sample": {
+        "DestinationCluster": "Beach",
+        "OverweightRiskKg": 6.5,
+        "EligibleForWaiver": true,
+        "RegulatoryRestrictions": ["NoLithiumBatteriesInChecked"],
+        "BundleEligible": true,
+        "HouseholdTravel": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_PolicyExplain", "name": "Policy Explanation", "description": "Personalized baggage policy summary including carry-on, checked, special items." },
+    { "id": "Service_FeeCalculator", "name": "Fee Calculator", "description": "Dynamic calculator for overweight/additional bag fees." },
+    { "id": "Service_WaiverEvaluation", "name": "Waiver Evaluation", "description": "Eligibility for waivers or goodwill credits by tier/history." },
+    { "id": "ExtraBaggage", "name": "Add Checked Baggage", "description": "Purchase additional checked baggage." },
+    { "id": "OverweightPrepay", "name": "Prepay Overweight", "description": "Prepay overweight fees online at reduced rate." },
+    { "id": "SportsEquipment", "name": "Add Sports Equipment", "description": "Add ski/board/golf equipment service." },
+    { "id": "PriorityBaggage", "name": "Priority Baggage", "description": "Priority tagging for faster delivery." },
+    { "id": "CabinBagUpgrade", "name": "Cabin Bag Upgrade", "description": "Upgrade to larger cabin bag allowance." },
+    { "id": "BaggageBundle", "name": "Baggage Bundle", "description": "Bundle: 1 checked + priority baggage with discount." },
+    { "id": "LoyaltyStatusMatch", "name": "Loyalty Status Match", "description": "Temporary tier upgrade including baggage perks." }
+  ],
+  "treatments": {
+    "Service_PolicyExplain": [
+      { "id": "Treat_PolicyExplain_Script", "channel": "Agent", "placement": "GuidedScriptPanel" },
+      { "id": "Treat_PolicyExplain_ChatCard", "channel": "Chat/WhatsApp", "placement": "RichCardSummary" },
+      { "id": "Treat_PolicyExplain_EmailLink", "channel": "Email", "placement": "PolicyLinkFollowUp" }
+    ],
+    "Service_FeeCalculator": [
+      { "id": "Treat_FeeCalc_AgentWidget", "channel": "Agent", "placement": "CalculatorWidget" },
+      { "id": "Treat_FeeCalc_ChatPrompt", "channel": "Chat/WhatsApp", "placement": "InteractiveForm" }
+    ],
+    "Service_WaiverEvaluation": [
+      { "id": "Treat_Waiver_AgentReview", "channel": "Agent", "placement": "WaiverEligibilityPanel" },
+      { "id": "Treat_Waiver_ChatInfo", "channel": "Chat/WhatsApp", "placement": "EligibilityNotice" }
+    ],
+    "ExtraBaggage": [
+      { "id": "Treat_Baggage_AgentOffer", "channel": "Agent", "placement": "OfferTileWithPrice" },
+      { "id": "Treat_Baggage_ChatCTA", "channel": "Chat/WhatsApp", "placement": "BuyCTA" },
+      { "id": "Treat_Baggage_EmailLink", "channel": "Email", "placement": "SecureCheckoutLink" }
+    ],
+    "OverweightPrepay": [
+      { "id": "Treat_Overweight_AgentOffer", "channel": "Agent", "placement": "OfferTilePerKg" },
+      { "id": "Treat_Overweight_ChatForm", "channel": "Chat/WhatsApp", "placement": "KgSelectorWithQuote" }
+    ],
+    "SportsEquipment": [
+      { "id": "Treat_Sports_AgentOffer", "channel": "Agent", "placement": "EquipmentSelectorTile" },
+      { "id": "Treat_Sports_ChatCard", "channel": "Chat/WhatsApp", "placement": "EquipmentCard" }
+    ],
+    "PriorityBaggage": [
+      { "id": "Treat_PriorityBag_AgentOffer", "channel": "Agent", "placement": "PriorityTagTile" },
+      { "id": "Treat_PriorityBag_ChatCTA", "channel": "Chat/WhatsApp", "placement": "BuyCTA" }
+    ],
+    "CabinBagUpgrade": [
+      { "id": "Treat_CabinUpgrade_AgentOffer", "channel": "Agent", "placement": "CabinUpgradeTile" },
+      { "id": "Treat_CabinUpgrade_ChatCard", "channel": "Chat/WhatsApp", "placement": "UpgradeCard" }
+    ],
+    "BaggageBundle": [
+      { "id": "Treat_Bundle_AgentOffer", "channel": "Agent", "placement": "BundleTileWithDiscount" },
+      { "id": "Treat_Bundle_ChatCTA", "channel": "Chat/WhatsApp", "placement": "BundleBuyCTA" }
+    ],
+    "LoyaltyStatusMatch": [
+      { "id": "Treat_StatusMatch_Agent", "channel": "Agent", "placement": "StatusMatchPanel" },
+      { "id": "Treat_StatusMatch_Email", "channel": "Email", "placement": "EnrollmentLink" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_ActivePNR", "expression": "TripContext.PNR != null AND TripContext.DepartureDateTime > now()" },
+      { "ruleName": "Common_Eligibility_SupportContext_Baggage", "expression": "SupportInteraction.ReasonCategory = 'BaggageAllowance'" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentWhatsApp) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_PolicyExplain",
+        "ruleName": "Elig_Service_PolicyExplain",
+        "conditions": [
+          { "label": "Always for baggage inquiries", "expression": "SupportInteraction.DetectedIntent IN ['AllowanceQuery','OverweightRisk','AddBagIntent','SportsEquipmentIntent']" }
+        ]
+      },
+      {
+        "offerId": "Service_FeeCalculator",
+        "ruleName": "Elig_Service_FeeCalc",
+        "conditions": [
+          { "label": "Potential overweight risk", "expression": "ContextDerived.OverweightRiskKg > 0 OR TripContext.CheckedAllowanceKg = 0" },
+          { "label": "Customer intent", "expression": "SupportInteraction.DetectedIntent IN ['OverweightRisk','AddBagIntent']" }
+        ]
+      },
+      {
+        "offerId": "Service_WaiverEvaluation",
+        "ruleName": "Elig_Service_Waiver",
+        "conditions": [
+          { "label": "Tier or history", "expression": "CustomerProfile.LoyaltyTier IN ['Gold','Platinum'] OR CustomerProfile.LifetimeValueScore >= 700" },
+          { "label": "Complaint signal", "expression": "SupportInteraction.PriorComplaintsCount >= 1" },
+          { "label": "Waiver toggle", "expression": "SupportInteraction.WaiverConsideration = true OR SupportInteraction.AgentEscalation = true" }
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "ruleName": "Elig_ExtraBaggage",
+        "conditions": [
+          { "label": "No checked bag yet", "expression": "TripContext.PaidBaggageQty = 0" },
+          { "label": "Inventory available", "expression": "OperationsInventory.BaggageInventoryRemaining >= 1" },
+          { "label": "Destination propensity", "expression": "ContextDerived.DestinationCluster IN ['Beach','Ski'] OR ContextDerived.HouseholdTravel = true" },
+          { "label": "Price fit", "expression": "PricingRules.AncillaryBasePrice_Baggage * PricingRules.DynamicPriceMultiplier <= 45.00 OR CustomerProfile.PriceSensitivityScore <= 0.6" }
+        ]
+      },
+      {
+        "offerId": "OverweightPrepay",
+        "ruleName": "Elig_OverweightPrepay",
+        "conditions": [
+          { "label": "Overweight predicted", "expression": "ContextDerived.OverweightRiskKg >= 3.0" },
+          { "label": "Time window", "expression": "SupportInteraction.TimeToDepartureHours BETWEEN 12 AND 96" },
+          { "label": "Economic rationale", "expression": "PricingRules.AncillaryBasePrice_OverweightFeePerKg * PricingRules.DynamicPriceMultiplier <= 15.00" }
+        ]
+      },
+      {
+        "offerId": "SportsEquipment",
+        "ruleName": "Elig_SportsEquipment",
+        "conditions": [
+          { "label": "Sports route or intent", "expression": "ContextDerived.DestinationCluster = 'Ski' OR SupportInteraction.DetectedIntent = 'SportsEquipmentIntent'" },
+          { "label": "Not already added", "expression": "TripContext.SportsEquipmentAdded = false" }
+        ]
+      },
+      {
+        "offerId": "PriorityBaggage",
+        "ruleName": "Elig_PriorityBaggage",
+        "conditions": [
+          { "label": "Airport supports priority", "expression": "OperationsInventory.AirportSupportsPriorityBaggage = true" },
+          { "label": "Capacity", "expression": "OperationsInventory.PriorityBaggageCapacityRemaining >= 5" },
+          { "label": "Household convenience", "expression": "ContextDerived.HouseholdTravel = true OR TripContext.NumberOfPassengers >= 2" }
+        ]
+      },
+      {
+        "offerId": "CabinBagUpgrade",
+        "ruleName": "Elig_CabinBagUpgrade",
+        "conditions": [
+          { "label": "Low carry-on allowance", "expression": "TripContext.CarryOnAllowanceKg <= 8.0" },
+          { "label": "Fare brand restrictive", "expression": "TripContext.FareBrand = 'Basic'" },
+          { "label": "Price guardrail", "expression": "PricingRules.AncillaryBasePrice_CabinBagUpgrade * PricingRules.DynamicPriceMultiplier <= 20.00" }
+        ]
+      },
+      {
+        "offerId": "BaggageBundle",
+        "ruleName": "Elig_BaggageBundle",
+        "conditions": [
+          { "label": "Bundle eligible", "expression": "ContextDerived.BundleEligible = true" },
+          { "label": "Components available", "expression": "TripContext.PaidBaggageQty = 0 AND OperationsInventory.PriorityBaggageCapacityRemaining >= 5" },
+          { "label": "Discount applied", "expression": "PricingRules.BundleDiscountPercent >= 10.0" }
+        ]
+      },
+      {
+        "offerId": "LoyaltyStatusMatch",
+        "ruleName": "Elig_StatusMatch",
+        "conditions": [
+          { "label": "High value or competitive risk", "expression": "CustomerProfile.LifetimeValueScore >= 750 OR CustomerProfile.LoyaltyTier = 'Silver'" },
+          { "label": "Upcoming international travel", "expression": "TripContext.International = true" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_PolicyExplain",
+        "treatments": [
+          { "treatmentId": "Treat_PolicyExplain_Script", "expression": "SupportInteraction.ContactChannel = 'Voice' OR SupportInteraction.AgentEscalation = true" },
+          { "treatmentId": "Treat_PolicyExplain_ChatCard", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp']" },
+          { "treatmentId": "Treat_PolicyExplain_EmailLink", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_FeeCalculator",
+        "treatments": [
+          { "treatmentId": "Treat_FeeCalc_AgentWidget", "expression": "SupportInteraction.AgentEscalation = true" },
+          { "treatmentId": "Treat_FeeCalc_ChatPrompt", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp'] AND (ContextDerived.OverweightRiskKg > 0 OR TripContext.PaidBaggageQty = 0)" }
+        ]
+      },
+      {
+        "offerId": "Service_WaiverEvaluation",
+        "treatments": [
+          { "treatmentId": "Treat_Waiver_AgentReview", "expression": "SupportInteraction.AgentEscalation = true OR SupportInteraction.WaiverConsideration = true" },
+          { "treatmentId": "Treat_Waiver_ChatInfo", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp']" }
+        ]
+      },
+      {
+        "offerId": "ExtraBaggage",
+        "treatments": [
+          { "treatmentId": "Treat_Baggage_AgentOffer", "expression": "SupportInteraction.ContactChannel = 'Voice' OR SupportInteraction.AgentEscalation = true" },
+          { "treatmentId": "Treat_Baggage_ChatCTA", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp'] AND OperationsInventory.BaggageInventoryRemaining >= 1" },
+          { "treatmentId": "Treat_Baggage_EmailLink", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "OverweightPrepay",
+        "treatments": [
+          { "treatmentId": "Treat_Overweight_AgentOffer", "expression": "SupportInteraction.AgentEscalation = true AND ContextDerived.OverweightRiskKg >= 3.0" },
+          { "treatmentId": "Treat_Overweight_ChatForm", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp'] AND ContextDerived.OverweightRiskKg >= 3.0" }
+        ]
+      },
+      {
+        "offerId": "SportsEquipment",
+        "treatments": [
+          { "treatmentId": "Treat_Sports_AgentOffer", "expression": "SupportInteraction.ContactChannel = 'Voice' OR SupportInteraction.AgentEscalation = true" },
+          { "treatmentId": "Treat_Sports_ChatCard", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp']" }
+        ]
+      },
+      {
+        "offerId": "PriorityBaggage",
+        "treatments": [
+          { "treatmentId": "Treat_PriorityBag_AgentOffer", "expression": "OperationsInventory.AirportSupportsPriorityBaggage = true" },
+          { "treatmentId": "Treat_PriorityBag_ChatCTA", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp'] AND OperationsInventory.PriorityBaggageCapacityRemaining >= 5" }
+        ]
+      },
+      {
+        "offerId": "CabinBagUpgrade",
+        "treatments": [
+          { "treatmentId": "Treat_CabinUpgrade_AgentOffer", "expression": "TripContext.FareBrand = 'Basic' AND TripContext.CarryOnAllowanceKg <= 8.0" },
+          { "treatmentId": "Treat_CabinUpgrade_ChatCard", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp'] AND TripContext.CarryOnAllowanceKg <= 8.0" }
+        ]
+      },
+      {
+        "offerId": "BaggageBundle",
+        "treatments": [
+          { "treatmentId": "Treat_Bundle_AgentOffer", "expression": "ContextDerived.BundleEligible = true" },
+          { "treatmentId": "Treat_Bundle_ChatCTA", "expression": "SupportInteraction.ContactChannel IN ['Chat','WhatsApp'] AND ContextDerived.BundleEligible = true" }
+        ]
+      },
+      {
+        "offerId": "LoyaltyStatusMatch",
+        "treatments": [
+          { "treatmentId": "Treat_StatusMatch_Agent", "expression": "SupportInteraction.AgentEscalation = true OR CustomerProfile.LoyaltyTier = 'Silver'" },
+          { "treatmentId": "Treat_StatusMatch_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate support session with CRM profile, PNR, ops inventory, pricing, and prior interactions.",
+        "logic": [
+          "On support contact: call CRM, PNR, ops inventory, pricing, consent services",
+          "Cache TTL = 180 seconds"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Detect baggage-allowance intent and sub-intents (overweight, add bag, sports equipment).",
+        "logic": [
+          "IF SupportInteraction.ReasonCategory = 'BaggageAllowance' THEN Intent = 'BaggageSupport'",
+          "Sub-intents from keywords/context: AllowanceQuery, OverweightRisk, AddBagIntent, SportsEquipmentIntent"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility; classify service-first actions.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Always include service actions (PolicyExplain, FeeCalculator) before commercial upsell"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate Elig_* per offer; produce applicability reasons.",
+        "logic": [
+          "Run individual eligibility rules",
+          "Set applicability: ['AlreadyPurchased','InventoryLow','PriceTooHigh','NotRelevant','CapacityLow']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Service-first ranking for support context.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*AdaptivePropensity + w3*ExpectedMargin + w4*ContextFit",
+          "ServicePriority: PolicyExplain=100, FeeCalculator=95, Waiver=90, ExtraBaggage=80, OverweightPrepay=75, BaggageBundle=72, CabinUpgrade=68, PriorityBaggage=65, SportsEquipment=60, StatusMatch=55",
+          "ContextFit +10 if HouseholdTravel or DestinationCluster aligns with offer"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select treatment per channel with minimal friction.",
+        "logic": [
+          "Filter by Treat_* eligibility",
+          "Preference: AgentScript/Widget for Voice; RichCard/CTA for Chat; Follow-up Link for Email",
+          "Limit to max 2 upsell prompts in session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply frequency, sensitivity, and recency policies.",
+        "logic": [
+          "Apply GlobalFrequencyCaps",
+          "Apply OfferLevelCaps",
+          "Apply ContextualSuppressions (SensitiveInteraction, RegulatoryRestriction)",
+          "Apply RecencyRules (NoRepeatInSession)"
+        ]
+      },
+      {
+        "id": "PricePersonalization",
+        "type": "Calculator",
+        "purpose": "Compute personalized prices and bundles.",
+        "logic": [
+          "OfferPrice = BasePrice × DynamicPriceMultiplier",
+          "Bundles: apply BundleDiscountPercent to combined items",
+          "Optional tier-based discount guardrails"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment; capture Interaction History.",
+        "logic": [
+          "Persist IH: CustomerID, PNR, OfferID, TreatmentID, Channel, Outcome, ReasonCodes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update propensities/suitability for support actions.",
+        "logic": [
+          "Ingest impression/accept/decline outcomes",
+          "Update suitability features (e.g., 'Show ExtraBaggage in support')"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_WhatsApp": { "maxPer48Hours": 1, "minIntervalHours": 24 },
+      "AgentUpsell": { "maxPerSupportSession": 2 },
+      "ChatOffers": { "maxPerSupportSession": 2, "noRepeatWithinSession": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_PolicyExplain", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_FeeCalculator", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_WaiverEvaluation", "maxPerSession": 1, "suppressOn": ["WaiverDenied"], "nonCommercial": true },
+      { "offerId": "ExtraBaggage", "maxPerTrip": 2, "suppressOn": ["BaggagePurchased"] },
+      { "offerId": "OverweightPrepay", "maxPerTrip": 1, "suppressOn": ["WeightWithinAllowance"] },
+      { "offerId": "SportsEquipment", "maxPerTrip": 1, "suppressOn": ["SportsEquipmentAdded"] },
+      { "offerId": "PriorityBaggage", "maxPerTrip": 1, "suppressOn": ["AirportNotSupported","CapacityBelowThreshold"] },
+      { "offerId": "CabinBagUpgrade", "maxPerTrip": 1, "suppressOn": ["CarryOnUpgraded"] },
+      { "offerId": "BaggageBundle", "maxPerTrip": 1, "suppressOn": ["AnyBundleComponentPurchased"] },
+      { "offerId": "LoyaltyStatusMatch", "maxPerQuarter": 1, "suppressOn": ["StatusUpgraded"] }
+    ],
+    "contextualSuppressions": [
+      { "context": "SensitiveInteraction", "rule": "If complaint escalated or waiver denied, suppress commercial offers; resolve service only." },
+      { "context": "RegulatoryRestriction", "rule": "Suppress offers conflicting with regulatory limitations present in context." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatInSession", "expression": "Do not repeat the same offer within a single support session." },
+      { "ruleName": "AbandonmentFollowUp", "expression": "If ExtraBaggage declined, allow one email follow-up within 48 hours if ConsentEmail = true." }
+    ]
+  },
+  "channels": ["Voice", "Chat", "WhatsApp", "Email", "AgentDesktop"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=ServiceAndRecovery, Group=BaggageAllowanceSupport. Tag service actions to prioritize in arbitration.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement Elig_* rules under each Action with reason codes.",
+    "arbitrationModel": "Service-first ranking; combine adaptive propensity, expected margin, and context-fit; select one primary service action plus ≤1 commercial upsell.",
+    "treatmentsMapping": "Define Treat_* per channel; ensure agent widgets and chat rich cards are available and localized.",
+    "contactPolicyConfig": "Apply global and action-level caps pre-arbitration; honor sensitive interaction suppressions.",
+    "dataFlows": "Real-time fetch from CRM, PNR, ops, pricing; write Interaction History for learning and compliance audit."
+  }
+}
