@@ -1,0 +1,449 @@
+{
+  "useCase": {
+    "name": "12-Month Inactivity Reactivation",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "LoyaltyAndRetention",
+    "group": "InactiveCustomerReactivation",
+    "description": "Service-first NBA for customers who have not flown in the last 12 months. Orchestrates value-led reactivation via status accelerators, route-specific deals, partner earn, inspiration content, and housekeeping (profile, consents), with strict cadence and suitability."
+  },
+  "dataModels": {
+    "LoyaltyProfile": {
+      "attributes": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "LoyaltyID", "type": "string" },
+        { "name": "Tier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "TierPoints", "type": "number" },
+        { "name": "RedeemablePoints", "type": "number" },
+        { "name": "PointsExpiringIn90Days", "type": "number" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "PrimaryAirport", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "PreferredCategories", "type": "array<string>" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-350219",
+        "LoyaltyID": "LOY-99100221",
+        "Tier": "Silver",
+        "TierPoints": 12450,
+        "RedeemablePoints": 18200,
+        "PointsExpiringIn90Days": 2200,
+        "CountryOfResidence": "IN",
+        "PrimaryAirport": "HYD",
+        "BlacklistFlag": false,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "PreferredCategories": ["Beach", "City"]
+      }
+    },
+    "FlightHistorySummary": {
+      "attributes": [
+        { "name": "LastFlightDate", "type": "date" },
+        { "name": "FlightsLast12Months", "type": "integer" },
+        { "name": "TotalSpendLast24Months", "type": "number" },
+        { "name": "LastOrigin", "type": "string" },
+        { "name": "LastDestination", "type": "string" },
+        { "name": "LastCabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] }
+      ],
+      "sample": {
+        "LastFlightDate": "2024-11-30",
+        "FlightsLast12Months": 0,
+        "TotalSpendLast24Months": 76450.0,
+        "LastOrigin": "HYD",
+        "LastDestination": "DEL",
+        "LastCabinClass": "Economy"
+      }
+    },
+    "EngagementSignals": {
+      "attributes": [
+        { "name": "PortalLoginsLast90Days", "type": "integer" },
+        { "name": "EmailOpensLast90Days", "type": "integer" },
+        { "name": "AppSessionsLast90Days", "type": "integer" },
+        { "name": "SearchesLast90Days", "type": "integer" },
+        { "name": "WatchlistRoutes", "type": "array<string>" },
+        { "name": "AbandonedCartInLast180Days", "type": "boolean" }
+      ],
+      "sample": {
+        "PortalLoginsLast90Days": 2,
+        "EmailOpensLast90Days": 5,
+        "AppSessionsLast90Days": 0,
+        "SearchesLast90Days": 3,
+        "WatchlistRoutes": ["HYD-GOI", "HYD-BLR"],
+        "AbandonedCartInLast180Days": true
+      }
+    },
+    "ReactivationPolicy": {
+      "attributes": [
+        { "name": "StatusChallengeEligibleTiers", "type": "array<string>" },
+        { "name": "StatusChallengeMultiplier", "type": "number" },
+        { "name": "WelcomeBackVoucherINR", "type": "number" },
+        { "name": "RouteDealThresholdPercent", "type": "number" },
+        { "name": "PartnerBonusEligible", "type": "boolean" }
+      ],
+      "sample": {
+        "StatusChallengeEligibleTiers": ["Basic", "Silver"],
+        "StatusChallengeMultiplier": 1.5,
+        "WelcomeBackVoucherINR": 750.0,
+        "RouteDealThresholdPercent": 10.0,
+        "PartnerBonusEligible": true
+      }
+    },
+    "PricingAndRoutes": {
+      "attributes": [
+        { "name": "HomeAirportDealsAvailable", "type": "boolean" },
+        { "name": "InspirationalRoutes", "type": "array<string>" },
+        { "name": "DynamicValuePerPointINR", "type": "number" },
+        { "name": "SeasonalityCluster", "type": "string", "enum": ["Peak", "Shoulder", "OffPeak"] }
+      ],
+      "sample": {
+        "HomeAirportDealsAvailable": true,
+        "InspirationalRoutes": ["HYD-GOI", "HYD-JAI", "HYD-BLR"],
+        "DynamicValuePerPointINR": 0.5,
+        "SeasonalityCluster": "Shoulder"
+      }
+    },
+    "RiskAndGuardrails": {
+      "attributes": [
+        { "name": "FraudScore", "type": "number" },
+        { "name": "HighDemandCapacityTight", "type": "boolean" },
+        { "name": "DiscountGuardrailEnabled", "type": "boolean" }
+      ],
+      "sample": {
+        "FraudScore": 0.22,
+        "HighDemandCapacityTight": false,
+        "DiscountGuardrailEnabled": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_WelcomeBackExplain", "name": "Welcome Back & Recap", "description": "Service message explaining reactivation path, benefits, and what's new." },
+    { "id": "Offer_StatusChallenge", "name": "Status Challenge Enrollment", "description": "Accelerated path to next tier for inactive members." },
+    { "id": "Offer_WelcomeBackVoucher", "name": "Welcome-back Voucher", "description": "Guardrailed voucher to nudge first trip back." },
+    { "id": "Offer_RouteSpecificDeal", "name": "Route-Specific Deal", "description": "Personalized fare deal from home airport or watchlist routes." },
+    { "id": "Offer_PartnerBonusEarn", "name": "Partner Bonus Earn", "description": "Hotel/card partner bonus to re-engage earning before travel." },
+    { "id": "Service_TravelInspiration", "name": "Travel Inspiration", "description": "Curated destinations aligned to preferences and seasonality." },
+    { "id": "Service_PointsExpiryRecovery", "name": "Points Expiry Recovery Plan", "description": "Micro-redemptions and earn options to save expiring points." },
+    { "id": "Service_ProfileAndConsentRefresh", "name": "Profile & Consent Refresh", "description": "Update contacts, preferences, and alerts to improve communication." },
+    { "id": "Service_ReactivationSurvey", "name": "Reactivation Survey", "description": "Quick survey to capture reasons for inactivity and preferences." }
+  ],
+  "treatments": {
+    "Service_WelcomeBackExplain": [
+      { "id": "Treat_Welcome_InlineBanner", "channel": "Web/App", "placement": "AccountHomeBanner" },
+      { "id": "Treat_Welcome_Email", "channel": "Email", "placement": "WelcomeBackEmail" }
+    ],
+    "Offer_StatusChallenge": [
+      { "id": "Treat_Challenge_Banner", "channel": "Web/App", "placement": "TierProgressBanner" },
+      { "id": "Treat_Challenge_Email", "channel": "Email", "placement": "ChallengeEnrollmentEmail" }
+    ],
+    "Offer_WelcomeBackVoucher": [
+      { "id": "Treat_Voucher_Tile", "channel": "Web/App", "placement": "OffersTile" },
+      { "id": "Treat_Voucher_Email", "channel": "Email", "placement": "VoucherEmail" },
+      { "id": "Treat_Voucher_SMS", "channel": "SMS", "placement": "VoucherSMS" }
+    ],
+    "Offer_RouteSpecificDeal": [
+      { "id": "Treat_RouteDeal_Tile", "channel": "Web/App", "placement": "RouteDealTile" },
+      { "id": "Treat_RouteDeal_Email", "channel": "Email", "placement": "RouteDealEmail" }
+    ],
+    "Offer_PartnerBonusEarn": [
+      { "id": "Treat_Partner_Tile", "channel": "Web/App", "placement": "PartnerEarnTile" },
+      { "id": "Treat_Partner_Email", "channel": "Email", "placement": "PartnerEarnEmail" }
+    ],
+    "Service_TravelInspiration": [
+      { "id": "Treat_Inspire_Carousel", "channel": "Web/App", "placement": "InspirationCarousel" },
+      { "id": "Treat_Inspire_Email", "channel": "Email", "placement": "InspirationEmail" }
+    ],
+    "Service_PointsExpiryRecovery": [
+      { "id": "Treat_Expiry_InlinePlan", "channel": "Web/App", "placement": "ExpiryPlanInline" },
+      { "id": "Treat_Expiry_Email", "channel": "Email", "placement": "ExpiryPlanEmail" }
+    ],
+    "Service_ProfileAndConsentRefresh": [
+      { "id": "Treat_Consent_Inline", "channel": "Web/App", "placement": "ConsentInline" },
+      { "id": "Treat_Consent_Email", "channel": "Email", "placement": "ConsentEmail" }
+    ],
+    "Service_ReactivationSurvey": [
+      { "id": "Treat_Survey_Inline", "channel": "Web/App", "placement": "SurveyInline" },
+      { "id": "Treat_Survey_Email", "channel": "Email", "placement": "SurveyEmail" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "LoyaltyProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_Inactive12Months", "expression": "dateDiffDays(FlightHistorySummary.LastFlightDate, today()) >= 365 OR FlightHistorySummary.FlightsLast12Months = 0" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(LoyaltyProfile.ConsentEmail OR LoyaltyProfile.ConsentSMS OR LoyaltyProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_WelcomeBackExplain",
+        "ruleName": "Elig_WelcomeBackExplain",
+        "conditions": [
+          "true"
+        ]
+      },
+      {
+        "offerId": "Offer_StatusChallenge",
+        "ruleName": "Elig_StatusChallenge",
+        "conditions": [
+          "LoyaltyProfile.Tier IN ReactivationPolicy.StatusChallengeEligibleTiers",
+          "FlightHistorySummary.FlightsLast12Months = 0",
+          "ReactivationPolicy.StatusChallengeMultiplier >= 1.2"
+        ]
+      },
+      {
+        "offerId": "Offer_WelcomeBackVoucher",
+        "ruleName": "Elig_WelcomeBackVoucher",
+        "conditions": [
+          "ReactivationPolicy.WelcomeBackVoucherINR >= 500",
+          "RiskAndGuardrails.DiscountGuardrailEnabled = true",
+          "RiskAndGuardrails.HighDemandCapacityTight = false"
+        ]
+      },
+      {
+        "offerId": "Offer_RouteSpecificDeal",
+        "ruleName": "Elig_RouteDeal",
+        "conditions": [
+          "PricingAndRoutes.HomeAirportDealsAvailable = true",
+          "size(EngagementSignals.WatchlistRoutes) >= 1",
+          "ReactivationPolicy.RouteDealThresholdPercent >= 8.0"
+        ]
+      },
+      {
+        "offerId": "Offer_PartnerBonusEarn",
+        "ruleName": "Elig_PartnerBonus",
+        "conditions": [
+          "ReactivationPolicy.PartnerBonusEligible = true",
+          "LoyaltyProfile.CountryOfResidence = 'IN'"
+        ]
+      },
+      {
+        "offerId": "Service_TravelInspiration",
+        "ruleName": "Elig_Inspiration",
+        "conditions": [
+          "size(PricingAndRoutes.InspirationalRoutes) >= 3",
+          "EngagementSignals.SearchesLast90Days >= 1"
+        ]
+      },
+      {
+        "offerId": "Service_PointsExpiryRecovery",
+        "ruleName": "Elig_ExpiryRecovery",
+        "conditions": [
+          "LoyaltyProfile.PointsExpiringIn90Days > 0",
+          "PricingAndRoutes.DynamicValuePerPointINR >= 0.4"
+        ]
+      },
+      {
+        "offerId": "Service_ProfileAndConsentRefresh",
+        "ruleName": "Elig_ConsentRefresh",
+        "conditions": [
+          "LoyaltyProfile.ConsentPush = false OR LoyaltyProfile.Email = ''"
+        ]
+      },
+      {
+        "offerId": "Service_ReactivationSurvey",
+        "ruleName": "Elig_ReactivationSurvey",
+        "conditions": [
+          "EngagementSignals.EmailOpensLast90Days >= 1 OR EngagementSignals.PortalLoginsLast90Days >= 1"
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_WelcomeBackExplain",
+        "treatments": [
+          { "treatmentId": "Treat_Welcome_InlineBanner", "expression": "true" },
+          { "treatmentId": "Treat_Welcome_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_StatusChallenge",
+        "treatments": [
+          { "treatmentId": "Treat_Challenge_Banner", "expression": "LoyaltyProfile.Tier IN ReactivationPolicy.StatusChallengeEligibleTiers" },
+          { "treatmentId": "Treat_Challenge_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_WelcomeBackVoucher",
+        "treatments": [
+          { "treatmentId": "Treat_Voucher_Tile", "expression": "RiskAndGuardrails.DiscountGuardrailEnabled = true" },
+          { "treatmentId": "Treat_Voucher_Email", "expression": "LoyaltyProfile.ConsentEmail = true" },
+          { "treatmentId": "Treat_Voucher_SMS", "expression": "LoyaltyProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_RouteSpecificDeal",
+        "treatments": [
+          { "treatmentId": "Treat_RouteDeal_Tile", "expression": "PricingAndRoutes.HomeAirportDealsAvailable = true" },
+          { "treatmentId": "Treat_RouteDeal_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_PartnerBonusEarn",
+        "treatments": [
+          { "treatmentId": "Treat_Partner_Tile", "expression": "ReactivationPolicy.PartnerBonusEligible = true" },
+          { "treatmentId": "Treat_Partner_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_TravelInspiration",
+        "treatments": [
+          { "treatmentId": "Treat_Inspire_Carousel", "expression": "size(PricingAndRoutes.InspirationalRoutes) >= 3" },
+          { "treatmentId": "Treat_Inspire_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PointsExpiryRecovery",
+        "treatments": [
+          { "treatmentId": "Treat_Expiry_InlinePlan", "expression": "LoyaltyProfile.PointsExpiringIn90Days > 0" },
+          { "treatmentId": "Treat_Expiry_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ProfileAndConsentRefresh",
+        "treatments": [
+          { "treatmentId": "Treat_Consent_Inline", "expression": "true" },
+          { "treatmentId": "Treat_Consent_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ReactivationSurvey",
+        "treatments": [
+          { "treatmentId": "Treat_Survey_Inline", "expression": "EngagementSignals.PortalLoginsLast90Days >= 1" },
+          { "treatmentId": "Treat_Survey_Email", "expression": "LoyaltyProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with loyalty, flight history, engagement, pricing/routes, and policy/guardrails.",
+        "logic": [
+          "Load LoyaltyProfile, FlightHistorySummary, EngagementSignals, ReactivationPolicy, PricingAndRoutes, RiskAndGuardrails",
+          "Cache TTL = 180 seconds; dedupe by CustomerID"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm 12-month inactivity intent and sub-intents.",
+        "logic": [
+          "IF dateDiffDays(LastFlightDate, today()) >= 365 OR FlightsLast12Months = 0 THEN Intent = 'Inactive12M'",
+          "Sub-intents based on PreferredCategories and WatchlistRoutes"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility and prioritize service-first reactivation.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Service-first: WelcomeBackExplain, ConsentRefresh, ExpiryRecovery considered before commercial vouchers/deals"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility with reason codes.",
+        "logic": [
+          "Run Elig_* for each offer",
+          "Set reasons: ['TierNotEligible','GuardrailBlocked','NoDealsAvailable','NoExpiringPoints','LowEngagement']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by likelihood of first-trip-back, suitability, and margin safety.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*AdaptivePropensity + w3*IntentAlignment + w4*MarginGuardrails",
+          "Priority baseline: WelcomeBackExplain=95, StatusChallenge=90, RouteSpecificDeal=85, WelcomeBackVoucher=82, PartnerBonusEarn=78, TravelInspiration=75, ExpiryRecovery=70, ConsentRefresh=68, ReactivationSurvey=60"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-appropriate treatments with minimal friction.",
+        "logic": [
+          "Prefer inline banners/tiles in Web/App; use Email/SMS only with consent",
+          "Limit to 2 concurrent offers; no simultaneous voucher + route deal in the same session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply cadence, contextual suppressions, and recency rules before finalization.",
+        "logic": [
+          "Apply global and offer-level caps",
+          "Suppress commercial offers if HighDemandCapacityTight = true",
+          "Avoid pressure: enforce quiet periods after any acceptance"
+        ]
+      },
+      {
+        "id": "Calculator_ValueAndDisclosure",
+        "type": "Calculator",
+        "purpose": "Compute voucher value, challenge uplift, and points value disclosure.",
+        "logic": [
+          "VoucherValue = ReactivationPolicy.WelcomeBackVoucherINR",
+          "ChallengeUplift = TierPoints × StatusChallengeMultiplier",
+          "ValuePerPoint = PricingAndRoutes.DynamicValuePerPointINR"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment and persist Interaction History.",
+        "logic": [
+          "Persist IH: CustomerID, OfferID, TreatmentID, Channel, Outcome, ReasonCodes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update propensities by category, airport, and offer mix.",
+        "logic": [
+          "Ingest impressions, clicks, enrollments, voucher claims, first-trip-back bookings",
+          "Boost treatments that reliably drive first trip back; dampen low-performing mixes"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer14Days": 2, "minIntervalHours": 72 },
+      "SMS_Push": { "maxPer14Days": 2, "minIntervalHours": 72 },
+      "InPortalTiles": { "maxDistinctOffersPerSession": 2, "noRepeatWithinSession": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_WelcomeBackExplain", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Offer_StatusChallenge", "maxPerQuarter": 1, "suppressOn": ["ChallengeEnrolled"] },
+      { "offerId": "Offer_WelcomeBackVoucher", "maxPer30Days": 1, "suppressOn": ["VoucherClaimed"] },
+      { "offerId": "Offer_RouteSpecificDeal", "maxPerSession": 1, "suppressOn": ["RouteDealClicked"] },
+      { "offerId": "Offer_PartnerBonusEarn", "maxPerMonth": 1, "suppressOn": ["PartnerEarnStarted"] },
+      { "offerId": "Service_TravelInspiration", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_PointsExpiryRecovery", "maxPerSession": 1, "suppressOn": ["ExpiryPlanStarted"], "nonCommercial": true },
+      { "offerId": "Service_ProfileAndConsentRefresh", "maxPerSession": 1, "suppressOn": ["ConsentUpdated"], "nonCommercial": true },
+      { "offerId": "Service_ReactivationSurvey", "maxPer30Days": 1, "suppressOn": ["SurveyCompleted"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "HighDemandCapacityTight", "rule": "Suppress vouchers and route deals; prefer status challenge, inspiration, and partner earn." },
+      { "context": "HighRisk", "rule": "If FraudScore > 0.7, suppress commercial offers; show service-only WelcomeBackExplain and ConsentRefresh." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatWithinSession", "expression": "Do not repeat the same offer in one session." },
+      { "ruleName": "PostAcceptanceQuietPeriod", "expression": "After any offer is accepted, suppress further reactivation offers for 7 days; send confirmations only." }
+    ]
+  },
+  "channels": ["Web", "App", "Email", "SMS", "Push", "Agent"],
+  "implementationNotes": {
+    "actionsModeling": "Model Actions under Issue=LoyaltyAndRetention, Group=InactiveCustomerReactivation. Tag service vs commercial; enable reason codes.",
+    "eligibilityImplementation": "Apply Common_Eligibility at start; implement Elig_* per offer with tier, value, guardrails; log reasons for transparency.",
+    "arbitrationModel": "Service-first, margin-safe ranking; emphasize status challenge and route deals; avoid stacking voucher + deal simultaneously.",
+    "treatmentsMapping": "Inline tiles/banners for portal; email/SMS for consented nudges; keep copy value-led and concise.",
+    "contactPolicyConfig": "Strict cadence for inactive cohorts; contextual suppressions for demand and risk; recency to prevent fatigue.",
+    "dataFlows": "Batch + real-time: loyalty, flights history, pricing routes, engagement; persist Interaction History for audit and adaptive learning."
+  }
+}
