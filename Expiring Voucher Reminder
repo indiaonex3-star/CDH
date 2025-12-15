@@ -1,0 +1,430 @@
+{
+  "useCase": {
+    "name": "Unused Voucher Activation and Safe Redemption",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "RetentionAndValueRecovery",
+    "group": "UnusedVoucherActivation",
+    "description": "NBA triggered when a customer holds an unused voucher (eCredit/compensation/gift) nearing expiry or idle. Orchestrates service-first clarity, suitable redemption paths (upcoming trips, ancillaries), policy-safe extensions/conversions, and reminders with strict guardrails."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "attributes": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "Email", "type": "string" },
+        { "name": "Mobile", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Guest", "Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-110289",
+        "FullName": "Paruchuri N.",
+        "Email": "paruchuri@example.com",
+        "Mobile": "+91-9001234567",
+        "LoyaltyTier": "Gold",
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "VoucherInventory": {
+      "attributes": [
+        { "name": "VoucherID", "type": "string" },
+        { "name": "VoucherType", "type": "string", "enum": ["eCredit", "Compensation", "Gift"] },
+        { "name": "Currency", "type": "string" },
+        { "name": "OriginalValue", "type": "number" },
+        { "name": "RemainingBalance", "type": "number" },
+        { "name": "IssueDate", "type": "string", "format": "date" },
+        { "name": "ExpiryDate", "type": "string", "format": "date" },
+        { "name": "Combinability", "type": "string", "enum": ["SingleUse", "MultiUse", "Stackable"] },
+        { "name": "EligibleFareBrands", "type": "array<string>" },
+        { "name": "EligibleAncillaries", "type": "array<string>" },
+        { "name": "MinSpendRequired", "type": "number" },
+        { "name": "Transferable", "type": "boolean" },
+        { "name": "RefundableIfUnused", "type": "boolean" },
+        { "name": "RedemptionStatus", "type": "string", "enum": ["Unused", "PartiallyUsed", "Locked", "Expired"] }
+      ],
+      "sample": {
+        "VoucherID": "VOU-879221",
+        "VoucherType": "eCredit",
+        "Currency": "INR",
+        "OriginalValue": 2000.0,
+        "RemainingBalance": 2000.0,
+        "IssueDate": "2025-10-10",
+        "ExpiryDate": "2026-03-31",
+        "Combinability": "MultiUse",
+        "EligibleFareBrands": ["Standard", "Flex", "FlexPlus"],
+        "EligibleAncillaries": ["Baggage", "SeatSelection", "Meal"],
+        "MinSpendRequired": 1500.0,
+        "Transferable": false,
+        "RefundableIfUnused": false,
+        "RedemptionStatus": "Unused"
+      }
+    },
+    "UpcomingTripSignals": {
+      "attributes": [
+        { "name": "HasActivePNR", "type": "boolean" },
+        { "name": "PNR", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] },
+        { "name": "AncillariesMissing", "type": "array<string>" }
+      ],
+      "sample": {
+        "HasActivePNR": true,
+        "PNR": "R2X7LM",
+        "DepartureDateTime": "2026-02-15T09:30:00+05:30",
+        "Origin": "HYD",
+        "Destination": "BLR",
+        "CabinClass": "Economy",
+        "FareBrand": "Standard",
+        "AncillariesMissing": ["Baggage", "SeatSelection"]
+      }
+    },
+    "BehaviorSignals": {
+      "attributes": [
+        { "name": "LastLoginTimestamp", "type": "string", "format": "date-time" },
+        { "name": "ManageBookingVisitsLast30Days", "type": "integer" },
+        { "name": "VoucherPageViewedLast30Days", "type": "integer" },
+        { "name": "Channel", "type": "string", "enum": ["Web", "App", "Email", "SMS"] },
+        { "name": "PromoFieldViewed", "type": "boolean" }
+      ],
+      "sample": {
+        "LastLoginTimestamp": "2026-01-05T14:10:00Z",
+        "ManageBookingVisitsLast30Days": 3,
+        "VoucherPageViewedLast30Days": 1,
+        "Channel": "Web",
+        "PromoFieldViewed": true
+      }
+    },
+    "PolicyAndGuardrails": {
+      "attributes": [
+        { "name": "AllowExtensionDays", "type": "integer" },
+        { "name": "AllowConversionToMiles", "type": "boolean" },
+        { "name": "ConversionRateINRPerMile", "type": "number" },
+        { "name": "AllowGiftTransfer", "type": "boolean" },
+        { "name": "AllowPartialUseForAncillaries", "type": "boolean" },
+        { "name": "QuietHoursIST", "type": "array<string>" },
+        { "name": "DiscountGuardrailEnabled", "type": "boolean" },
+        { "name": "HighDemandCapacityTight", "type": "boolean" },
+        { "name": "FraudScore", "type": "number" }
+      ],
+      "sample": {
+        "AllowExtensionDays": 30,
+        "AllowConversionToMiles": true,
+        "ConversionRateINRPerMile": 1.0,
+        "AllowGiftTransfer": false,
+        "AllowPartialUseForAncillaries": true,
+        "QuietHoursIST": ["22:00-07:00"],
+        "DiscountGuardrailEnabled": true,
+        "HighDemandCapacityTight": false,
+        "FraudScore": 0.15
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_VoucherSummaryExplain", "name": "Voucher Summary & Terms", "description": "Clear summary of balance, expiry, eligible products, and how to redeem." },
+    { "id": "Offer_UseVoucherUpcomingTrip", "name": "Apply Voucher to Upcoming Trip", "description": "One-click application to the active PNR (fare/ancillaries) per policy." },
+    { "id": "Offer_UseVoucherAncillaries", "name": "Apply Voucher to Ancillaries", "description": "Use remaining balance for baggage, seat, meals on current booking." },
+    { "id": "Offer_ExtendVoucher", "name": "Voucher Extension", "description": "Offer a policy-approved extension when near expiry and unused." },
+    { "id": "Offer_ConvertVoucherToMiles", "name": "Convert Voucher to Miles", "description": "Convert balance into loyalty miles at a guardrailed rate." },
+    { "id": "Offer_VoucherTopUpCoBrand", "name": "Co-brand Top-up", "description": "Card-linked cashback/top-up to cover shortfall and encourage redemption." },
+    { "id": "Service_VoucherReminderSchedule", "name": "Reminder Schedule Enable", "description": "Enable SMS/Email reminders for voucher before expiry." }
+  ],
+  "treatments": {
+    "Service_VoucherSummaryExplain": [
+      { "id": "Treat_Voucher_InlinePanel", "channel": "Web/App", "placement": "VoucherSummaryPanel" },
+      { "id": "Treat_Voucher_Email", "channel": "Email", "placement": "VoucherSummaryEmail" }
+    ],
+    "Offer_UseVoucherUpcomingTrip": [
+      { "id": "Treat_Upcoming_InlineCTA", "channel": "Web/App", "placement": "ApplyVoucherCTA" },
+      { "id": "Treat_Upcoming_EmailLink", "channel": "Email", "placement": "ApplyVoucherEmailLink" },
+      { "id": "Treat_Upcoming_SMSLink", "channel": "SMS", "placement": "ApplyVoucherSMSLink" }
+    ],
+    "Offer_UseVoucherAncillaries": [
+      { "id": "Treat_Ancillaries_InlineChooser", "channel": "Web/App", "placement": "AncillaryChooser" },
+      { "id": "Treat_Ancillaries_EmailCTA", "channel": "Email", "placement": "AncillariesEmailCTA" }
+    ],
+    "Offer_ExtendVoucher": [
+      { "id": "Treat_Extend_InlineDialog", "channel": "Web/App", "placement": "VoucherExtendDialog" },
+      { "id": "Treat_Extend_EmailConfirm", "channel": "Email", "placement": "VoucherExtendEmail" }
+    ],
+    "Offer_ConvertVoucherToMiles": [
+      { "id": "Treat_Convert_InlinePanel", "channel": "Web/App", "placement": "ConvertVoucherPanel" },
+      { "id": "Treat_Convert_Email", "channel": "Email", "placement": "ConvertVoucherEmail" }
+    ],
+    "Offer_VoucherTopUpCoBrand": [
+      { "id": "Treat_TopUp_InfoPanel", "channel": "Web/App", "placement": "CardTopUpInfoPanel" },
+      { "id": "Treat_TopUp_Email", "channel": "Email", "placement": "CardTopUpEmail" }
+    ],
+    "Service_VoucherReminderSchedule": [
+      { "id": "Treat_Reminder_EnableToggle", "channel": "Web/App", "placement": "ReminderEnableToggle" },
+      { "id": "Treat_Reminder_SMSOptIn", "channel": "SMS", "placement": "ReminderSMSOptIn" },
+      { "id": "Treat_Reminder_EmailOptIn", "channel": "Email", "placement": "ReminderEmailOptIn" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_VoucherUnusedOrPartial", "expression": "VoucherInventory.RedemptionStatus IN ['Unused','PartiallyUsed'] AND VoucherInventory.RemainingBalance > 0" },
+      { "ruleName": "Common_Eligibility_NotExpired", "expression": "dateDiffDays(now(), VoucherInventory.ExpiryDate) >= 0" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_VoucherSummaryExplain",
+        "ruleName": "Elig_VoucherSummaryExplain",
+        "conditions": [
+          "true"
+        ]
+      },
+      {
+        "offerId": "Offer_UseVoucherUpcomingTrip",
+        "ruleName": "Elig_UseVoucherUpcomingTrip",
+        "conditions": [
+          "UpcomingTripSignals.HasActivePNR = true",
+          "VoucherInventory.MinSpendRequired <= estimateSpend(UpcomingTripSignals)",
+          "intersect([UpcomingTripSignals.FareBrand], VoucherInventory.EligibleFareBrands).size() >= 1 OR size(intersect(UpcomingTripSignals.AncillariesMissing, VoucherInventory.EligibleAncillaries)) >= 1"
+        ]
+      },
+      {
+        "offerId": "Offer_UseVoucherAncillaries",
+        "ruleName": "Elig_UseVoucherAncillaries",
+        "conditions": [
+          "UpcomingTripSignals.HasActivePNR = true",
+          "PolicyAndGuardrails.AllowPartialUseForAncillaries = true",
+          "size(intersect(UpcomingTripSignals.AncillariesMissing, VoucherInventory.EligibleAncillaries)) >= 1"
+        ]
+      },
+      {
+        "offerId": "Offer_ExtendVoucher",
+        "ruleName": "Elig_ExtendVoucher",
+        "conditions": [
+          "dateDiffDays(now(), VoucherInventory.ExpiryDate) BETWEEN 0 AND 30",
+          "PolicyAndGuardrails.AllowExtensionDays > 0",
+          "VoucherInventory.RedemptionStatus = 'Unused'"
+        ]
+      },
+      {
+        "offerId": "Offer_ConvertVoucherToMiles",
+        "ruleName": "Elig_ConvertVoucherToMiles",
+        "conditions": [
+          "PolicyAndGuardrails.AllowConversionToMiles = true",
+          "VoucherInventory.VoucherType IN ['eCredit','Compensation']",
+          "VoucherInventory.RemainingBalance >= 500"
+        ]
+      },
+      {
+        "offerId": "Offer_VoucherTopUpCoBrand",
+        "ruleName": "Elig_VoucherTopUpCoBrand",
+        "conditions": [
+          "PolicyAndGuardrails.DiscountGuardrailEnabled = true",
+          "estimateSpend(UpcomingTripSignals) > VoucherInventory.RemainingBalance",
+          "CustomerProfile.LoyaltyTier IN ['Silver','Gold','Platinum']"
+        ]
+      },
+      {
+        "offerId": "Service_VoucherReminderSchedule",
+        "ruleName": "Elig_VoucherReminderSchedule",
+        "conditions": [
+          "VoucherInventory.RedemptionStatus = 'Unused' OR VoucherInventory.RedemptionStatus = 'PartiallyUsed'",
+          "dateDiffDays(now(), VoucherInventory.ExpiryDate) BETWEEN 1 AND 60"
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_VoucherSummaryExplain",
+        "treatments": [
+          { "treatmentId": "Treat_Voucher_InlinePanel", "expression": "true" },
+          { "treatmentId": "Treat_Voucher_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_UseVoucherUpcomingTrip",
+        "treatments": [
+          { "treatmentId": "Treat_Upcoming_InlineCTA", "expression": "UpcomingTripSignals.HasActivePNR = true" },
+          { "treatmentId": "Treat_Upcoming_EmailLink", "expression": "CustomerProfile.ConsentEmail = true" },
+          { "treatmentId": "Treat_Upcoming_SMSLink", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_UseVoucherAncillaries",
+        "treatments": [
+          { "treatmentId": "Treat_Ancillaries_InlineChooser", "expression": "UpcomingTripSignals.HasActivePNR = true AND PolicyAndGuardrails.AllowPartialUseForAncillaries = true" },
+          { "treatmentId": "Treat_Ancillaries_EmailCTA", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_ExtendVoucher",
+        "treatments": [
+          { "treatmentId": "Treat_Extend_InlineDialog", "expression": "dateDiffDays(now(), VoucherInventory.ExpiryDate) BETWEEN 0 AND 30 AND PolicyAndGuardrails.AllowExtensionDays > 0" },
+          { "treatmentId": "Treat_Extend_EmailConfirm", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_ConvertVoucherToMiles",
+        "treatments": [
+          { "treatmentId": "Treat_Convert_InlinePanel", "expression": "PolicyAndGuardrails.AllowConversionToMiles = true" },
+          { "treatmentId": "Treat_Convert_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_VoucherTopUpCoBrand",
+        "treatments": [
+          { "treatmentId": "Treat_TopUp_InfoPanel", "expression": "PolicyAndGuardrails.DiscountGuardrailEnabled = true" },
+          { "treatmentId": "Treat_TopUp_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_VoucherReminderSchedule",
+        "treatments": [
+          { "treatmentId": "Treat_Reminder_EnableToggle", "expression": "true" },
+          { "treatmentId": "Treat_Reminder_SMSOptIn", "expression": "CustomerProfile.ConsentSMS = true" },
+          { "treatmentId": "Treat_Reminder_EmailOptIn", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with customer, voucher inventory, upcoming trips, behavior, and policy guardrails.",
+        "logic": [
+          "Load CustomerProfile, VoucherInventory, UpcomingTripSignals, BehaviorSignals, PolicyAndGuardrails",
+          "Cache TTL = 180 seconds; dedupe by CustomerID + VoucherID"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm 'UnusedVoucherActivation' and urgency band.",
+        "logic": [
+          "IF Common_Eligibility_VoucherUnusedOrPartial AND Common_Eligibility_NotExpired THEN Intent = 'UnusedVoucherActivation'",
+          "UrgencyBand = case(dateDiffDays(now(), VoucherInventory.ExpiryDate)) { <=7:'High', <=30:'Medium', else:'Low' }"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility; service-first clarity and risk guardrails.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "If PolicyAndGuardrails.FraudScore > 0.7 => allow only service-type actions (Summary, Reminder)",
+          "Prioritize VoucherSummaryExplain before commercial offers"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and record reason codes.",
+        "logic": [
+          "Execute Elig_* for each offer",
+          "Set reasons: ['NoActivePNR','NotEligibleProducts','NearExpiryExtensionAllowed','ConversionAllowed','GuardrailBlocked','HighRisk']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by urgency, suitability, and value recovery.",
+        "logic": [
+          "Score = w1*Urgency(UrgencyBand) + w2*AdaptivePropensity + w3*Suitability + w4*PolicyFeasibility",
+          "Baseline priority: VoucherSummaryExplain=95, UseVoucherUpcomingTrip=90, UseVoucherAncillaries=88, ExtendVoucher=84, ConvertVoucherToMiles=78, VoucherTopUpCoBrand=72, ReminderSchedule=70",
+          "Boost UseVoucherUpcomingTrip when ManageBookingVisitsLast30Days >= 2; boost ExtendVoucher when <=7 days to expiry"
+        ]
+      },
+      {
+        "id": "Calculator_VoucherValue",
+        "type": "Calculator",
+        "purpose": "Compute practical redemption scenarios and shortfall.",
+        "logic": [
+          "EstimatedSpend = estimateSpend(UpcomingTripSignals)",
+          "Shortfall = max(0, EstimatedSpend - VoucherInventory.RemainingBalance)",
+          "MileCreditEstimate = VoucherInventory.RemainingBalance / PolicyAndGuardrails.ConversionRateINRPerMile"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-appropriate treatments with minimal friction.",
+        "logic": [
+          "Prefer inline CTA for Web/App; use Email/SMS for reminders and confirmations",
+          "Limit to one commercial + one service treatment per session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Enforce cadence, quiet hours, and contextual suppressions.",
+        "logic": [
+          "Apply GlobalFrequencyCaps and OfferLevelCaps",
+          "Quiet hours IST respected from PolicyAndGuardrails.QuietHoursIST for outbound unless expiry <= 3 days",
+          "Suppress TopUpCoBrand when HighDemandCapacityTight = true"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatments, trigger redemption/extension flows, and persist Interaction History.",
+        "logic": [
+          "Persist IH: CustomerID, VoucherID, OfferID, TreatmentID, Channel, Outcome, ReasonCodes, UrgencyBand"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Improve propensities by urgency, product fit, and customer segment.",
+        "logic": [
+          "Ingest impressions, clicks, applications, extensions, conversions",
+          "Boost offers that lead to redemption and future bookings; dampen low-performing mixes"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_Push": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "InSessionPrompts": { "maxPerSession": 2, "noRepeatWithinSession": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_VoucherSummaryExplain", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Offer_UseVoucherUpcomingTrip", "maxPerSession": 1, "suppressOn": ["VoucherAppliedToPNR"] },
+      { "offerId": "Offer_UseVoucherAncillaries", "maxPerSession": 1, "suppressOn": ["AncillaryPurchasedWithVoucher"] },
+      { "offerId": "Offer_ExtendVoucher", "maxPer30Days": 1, "suppressOn": ["VoucherExtended"] },
+      { "offerId": "Offer_ConvertVoucherToMiles", "maxPer30Days": 1, "suppressOn": ["VoucherConvertedToMiles"] },
+      { "offerId": "Offer_VoucherTopUpCoBrand", "maxPer14Days": 1, "suppressOn": ["TopUpStarted"] },
+      { "offerId": "Service_VoucherReminderSchedule", "maxPer30Days": 1, "suppressOn": ["ReminderEnabled"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "HighRisk", "rule": "If FraudScore > 0.7, suppress all commercial actions; show service-only Summary and Reminder." },
+      { "context": "HighDemandCapacityTight", "rule": "Suppress TopUpCoBrand and heavy promotional nudges; prioritize service and direct redemption." },
+      { "context": "QuietHours", "rule": "Defer outbound Email/SMS during QuietHoursIST unless daysToExpiry <= 3; in-app allowed." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatInSession", "expression": "Do not repeat the same voucher action within one session." },
+      { "ruleName": "PostRedemptionQuiet", "expression": "After voucher application, suppress further commercial prompts for 24 hours; send confirmations only." },
+      { "ruleName": "PostExtensionQuiet", "expression": "After extension, suppress extension offers for 60 days." }
+    ]
+  },
+  "channels": ["Web", "App", "Email", "SMS", "Push", "Agent"],
+  "implementationNotes": {
+    "actionsModeling": "Model Actions under Issue=RetentionAndValueRecovery, Group=UnusedVoucherActivation. Tag Summary/Reminder as service; others commercial with guardrails.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* with PNR, policy, and product checks; capture reason codes.",
+    "arbitrationModel": "Urgency-led ranking with service-first; prefer direct redemption paths; enable extensions/conversions only when policy permits.",
+    "treatmentsMapping": "Inline CTAs for Web/App; Email/SMS for reminders/confirmations; avoid stacking multiple commercial prompts.",
+    "contactPolicyConfig": "Enforce quiet hours, cadence caps, contextual suppressions; respect urgency overrides near expiry.",
+    "dataFlows": "Real-time voucher inventory, PNR signals, policy configuration; persist Interaction History for audit and adaptive learning."
+  }
+}
