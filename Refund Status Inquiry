@@ -1,0 +1,495 @@
+{
+  "useCase": {
+    "name": "Refund Status Check: Transparency, Acceleration & Alternatives",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "PostTravelAndRefunds",
+    "group": "RefundStatusSupport",
+    "description": "Service-first NBA when a customer checks refund status. Orchestrates status transparency, acceleration paths, payout method optimization, voucher alternatives, partial settlements, and proactive notifications—aligned to payment rails, policy timelines, and risk/compliance."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "Email", "type": "string" },
+        { "name": "Mobile", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "LifetimeValueScore", "type": "number" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-482901",
+        "FullName": "Paruchuri N.",
+        "Email": "paruchuri@example.com",
+        "Mobile": "+91-9001234567",
+        "LoyaltyTier": "Gold",
+        "LifetimeValueScore": 820.4,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": true,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "TripContext": {
+      "schema": [
+        { "name": "PNR", "type": "string" },
+        { "name": "TicketNumber", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "FlightStatus", "type": "string", "enum": ["Scheduled", "Delayed", "Cancelled", "Departed"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] }
+      ],
+      "sample": {
+        "PNR": "P6Z2MN",
+        "TicketNumber": "235-7788990011",
+        "Origin": "HYD",
+        "Destination": "DEL",
+        "DepartureDateTime": "2025-11-12T07:25:00+05:30",
+        "FlightStatus": "Cancelled",
+        "FareBrand": "Flex"
+      }
+    },
+    "RefundCase": {
+      "schema": [
+        { "name": "RefundCaseID", "type": "string" },
+        { "name": "RefundStatus", "type": "string", "enum": ["Initiated", "UnderReview", "Approved", "Rejected", "Paid", "PaymentFailed"] },
+        { "name": "RefundAmount", "type": "number" },
+        { "name": "Currency", "type": "string" },
+        { "name": "InitiationDate", "type": "string", "format": "date" },
+        { "name": "SlaDays", "type": "integer" },
+        { "name": "DaysElapsed", "type": "integer" },
+        { "name": "ReasonCode", "type": "string", "enum": ["Cancellation", "ScheduleChange", "Voluntary", "NoShow", "DuplicateCharge"] },
+        { "name": "EvidenceRequired", "type": "boolean" },
+        { "name": "EvidenceProvided", "type": "boolean" }
+      ],
+      "sample": {
+        "RefundCaseID": "RF-2025-000184",
+        "RefundStatus": "UnderReview",
+        "RefundAmount": 4850.0,
+        "Currency": "INR",
+        "InitiationDate": "2025-11-13",
+        "SlaDays": 14,
+        "DaysElapsed": 9,
+        "ReasonCode": "Cancellation",
+        "EvidenceRequired": false,
+        "EvidenceProvided": false
+      }
+    },
+    "PaymentPayout": {
+      "schema": [
+        { "name": "OriginalPaymentMethod", "type": "string", "enum": ["Card", "UPI", "NetBanking", "Wallet", "Cash", "BNPL"] },
+        { "name": "OriginalPaymentGateway", "type": "string" },
+        { "name": "PayoutMethod", "type": "string", "enum": ["Original", "UPI", "Wallet", "BankTransfer"] },
+        { "name": "PayoutPreferredAlt", "type": "string", "enum": ["None", "UPI", "Wallet", "BankTransfer"] },
+        { "name": "PayoutAttemptCount", "type": "integer" },
+        { "name": "LastPayoutAttemptDate", "type": "string", "format": "date" },
+        { "name": "PayoutFailureReason", "type": "string", "enum": ["BankReject", "InvalidAccount", "GatewayTimeout", "WalletInactive", "None"] }
+      ],
+      "sample": {
+        "OriginalPaymentMethod": "Card",
+        "OriginalPaymentGateway": "PG-3DS",
+        "PayoutMethod": "Original",
+        "PayoutPreferredAlt": "UPI",
+        "PayoutAttemptCount": 1,
+        "LastPayoutAttemptDate": "2025-11-18",
+        "PayoutFailureReason": "None"
+      }
+    },
+    "OpsPolicyPricing": {
+      "schema": [
+        { "name": "VoucherAlternativeValuePercent", "type": "number" },
+        { "name": "PartialSettlementAllowed", "type": "boolean" },
+        { "name": "ExpediteFee", "type": "number" },
+        { "name": "ExpediteFeeWaiverEligible", "type": "boolean" }
+      ],
+      "sample": {
+        "VoucherAlternativeValuePercent": 110.0,
+        "PartialSettlementAllowed": true,
+        "ExpediteFee": 0.0,
+        "ExpediteFeeWaiverEligible": true
+      }
+    },
+    "StatusCheckSignals": {
+      "schema": [
+        { "name": "Channel", "type": "string", "enum": ["Web", "App", "Agent", "Chat"] },
+        { "name": "SessionEvent", "type": "string", "enum": ["RefundStatusCheckStart", "RefundStatusCheckRefresh"] },
+        { "name": "AppPushEnabled", "type": "boolean" },
+        { "name": "GeoAtAirport", "type": "boolean" }
+      ],
+      "sample": {
+        "Channel": "Web",
+        "SessionEvent": "RefundStatusCheckRefresh",
+        "AppPushEnabled": true,
+        "GeoAtAirport": false
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        { "name": "SlaBreached", "type": "boolean" },
+        { "name": "HighValueCarePriority", "type": "boolean" },
+        { "name": "VoucherAppealScore", "type": "number" },
+        { "name": "RiskScore", "type": "number" },
+        { "name": "EligibleForExpedite", "type": "boolean" }
+      ],
+      "sample": {
+        "SlaBreached": false,
+        "HighValueCarePriority": true,
+        "VoucherAppealScore": 0.64,
+        "RiskScore": 0.18,
+        "EligibleForExpedite": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_ExplainRefundStatus", "name": "Explain Refund Status & Timeline", "description": "Transparent status, SLA countdown, reason code, and next steps." },
+    { "id": "Service_ExpediteReview", "name": "Expedite Refund Review", "description": "Prioritize case review where eligible (care priority/waiver)." },
+    { "id": "Service_ChangePayoutMethod", "name": "Change Payout Method", "description": "Switch to faster payout rails (UPI/wallet/bank transfer) to reduce delays." },
+    { "id": "Service_VoucherAlternative", "name": "Voucher Alternative", "description": "Convert to voucher at enhanced value if customer prefers faster credit." },
+    { "id": "Service_PartialSettlement", "name": "Partial Settlement + Balance Later", "description": "Settle partial amount now (e.g., taxes/fees) with remaining later." },
+    { "id": "Service_ProactiveNotifications", "name": "Proactive Notifications", "description": "Enable push/SMS/email updates for review events and payout attempts." },
+    { "id": "Service_AgentEscalation", "name": "Agent Escalation", "description": "Route complex/aged cases for prioritized agent handling." },
+    { "id": "Service_EvidenceGuidance", "name": "Evidence Guidance", "description": "Step-by-step for missing documents to unblock review." },
+    { "id": "Service_PayoutRetry", "name": "Payout Retry", "description": "Retry payout with corrected details post failure." },
+    { "id": "Service_RefundSummaryEmail", "name": "Refund Summary Email", "description": "Send a clean summary of status, amount, and expected payout date." }
+  ],
+  "treatments": {
+    "Service_ExplainRefundStatus": [
+      { "id": "Treat_Status_InlineBanner", "channel": "Web/App", "placement": "RefundStatusInline" },
+      { "id": "Treat_Status_FAQModal", "channel": "Web/App", "placement": "RefundFAQModal" }
+    ],
+    "Service_ExpediteReview": [
+      { "id": "Treat_Expedite_RequestTile", "channel": "Web/App", "placement": "ExpediteRequestTile" },
+      { "id": "Treat_Expedite_AgentPanel", "channel": "Agent", "placement": "ExpediteReviewPanel" }
+    ],
+    "Service_ChangePayoutMethod": [
+      { "id": "Treat_PayoutMethod_InlineChooser", "channel": "Web/App", "placement": "PayoutMethodChooser" },
+      { "id": "Treat_PayoutMethod_AgentLink", "channel": "Agent", "placement": "PayoutMethodUpdatePanel" }
+    ],
+    "Service_VoucherAlternative": [
+      { "id": "Treat_Voucher_InlineOffer", "channel": "Web/App", "placement": "VoucherConversionTile" },
+      { "id": "Treat_Voucher_Email", "channel": "Email", "placement": "VoucherOfferEmail" }
+    ],
+    "Service_PartialSettlement": [
+      { "id": "Treat_Partial_InlineFlow", "channel": "Web/App", "placement": "PartialSettlementFlow" },
+      { "id": "Treat_Partial_AgentPanel", "channel": "Agent", "placement": "PartialSettlementPanel" }
+    ],
+    "Service_ProactiveNotifications": [
+      { "id": "Treat_Notify_EnablePush", "channel": "App", "placement": "EnablePushToggle" },
+      { "id": "Treat_Notify_SMSOptIn", "channel": "SMS", "placement": "SMSOptIn" },
+      { "id": "Treat_Notify_EmailOptIn", "channel": "Email", "placement": "EmailOptIn" }
+    ],
+    "Service_AgentEscalation": [
+      { "id": "Treat_Escalation_Request", "channel": "Web/App", "placement": "CallbackRequestTile" },
+      { "id": "Treat_Escalation_AgentScript", "channel": "Agent", "placement": "RefundEscalationScript" }
+    ],
+    "Service_EvidenceGuidance": [
+      { "id": "Treat_Evidence_StepGuide", "channel": "Web/App", "placement": "EvidenceGuidePanel" },
+      { "id": "Treat_Evidence_EmailChecklist", "channel": "Email", "placement": "EvidenceChecklistEmail" }
+    ],
+    "Service_PayoutRetry": [
+      { "id": "Treat_PayoutRetry_Inline", "channel": "Web/App", "placement": "PayoutRetryCTA" },
+      { "id": "Treat_PayoutRetry_Agent", "channel": "Agent", "placement": "PayoutRetryPanel" }
+    ],
+    "Service_RefundSummaryEmail": [
+      { "id": "Treat_Summary_Email", "channel": "Email", "placement": "RefundSummaryEmail" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_ActiveRefundCase", "expression": "RefundCase.RefundCaseID != null" },
+      { "ruleName": "Common_Eligibility_StatusCheckContext", "expression": "StatusCheckSignals.SessionEvent IN ['RefundStatusCheckStart','RefundStatusCheckRefresh']" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_ExplainRefundStatus",
+        "ruleName": "Elig_ExplainStatus",
+        "conditions": [
+          { "label": "Always for refund status", "expression": "RefundCase.RefundStatus IN ['Initiated','UnderReview','Approved','Rejected','Paid','PaymentFailed']" }
+        ]
+      },
+      {
+        "offerId": "Service_ExpediteReview",
+        "ruleName": "Elig_ExpediteReview",
+        "conditions": [
+          { "label": "Eligible profile or care priority", "expression": "ContextDerived.HighValueCarePriority = true OR CustomerProfile.LoyaltyTier IN ['Gold','Platinum']" },
+          { "label": "Case in review or aged", "expression": "RefundCase.RefundStatus IN ['UnderReview','Initiated'] AND (RefundCase.DaysElapsed >= 7 OR ContextDerived.SlaBreached = true)" },
+          { "label": "Waiver policy", "expression": "OpsPolicyPricing.ExpediteFeeWaiverEligible = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ChangePayoutMethod",
+        "ruleName": "Elig_ChangePayout",
+        "conditions": [
+          { "label": "Payout not completed", "expression": "RefundCase.RefundStatus IN ['Approved','PaymentFailed']" },
+          { "label": "Faster rails available", "expression": "PaymentPayout.PayoutPreferredAlt IN ['UPI','Wallet','BankTransfer']" }
+        ]
+      },
+      {
+        "offerId": "Service_VoucherAlternative",
+        "ruleName": "Elig_VoucherAlternative",
+        "conditions": [
+          { "label": "Voucher enhancement", "expression": "OpsPolicyPricing.VoucherAlternativeValuePercent >= 105.0" },
+          { "label": "Customer consent possible", "expression": "RefundCase.RefundStatus IN ['Approved','UnderReview']" }
+        ]
+      },
+      {
+        "offerId": "Service_PartialSettlement",
+        "ruleName": "Elig_PartialSettlement",
+        "conditions": [
+          { "label": "Policy allows partial", "expression": "OpsPolicyPricing.PartialSettlementAllowed = true" },
+          { "label": "Case aged", "expression": "RefundCase.DaysElapsed >= 10 AND RefundCase.RefundStatus IN ['UnderReview','Approved']" }
+        ]
+      },
+      {
+        "offerId": "Service_ProactiveNotifications",
+        "ruleName": "Elig_ProactiveNotify",
+        "conditions": [
+          { "label": "Opt-in channels", "expression": "(StatusCheckSignals.AppPushEnabled = true AND CustomerProfile.ConsentPush = true) OR CustomerProfile.ConsentSMS = true OR CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AgentEscalation",
+        "ruleName": "Elig_AgentEscalation",
+        "conditions": [
+          { "label": "Complex or SLA breach", "expression": "ContextDerived.SlaBreached = true OR RefundCase.RefundStatus = 'PaymentFailed' OR RefundCase.EvidenceRequired = true" },
+          { "label": "Risk acceptable", "expression": "ContextDerived.RiskScore <= 0.7" }
+        ]
+      },
+      {
+        "offerId": "Service_EvidenceGuidance",
+        "ruleName": "Elig_EvidenceGuidance",
+        "conditions": [
+          { "label": "Evidence missing", "expression": "RefundCase.EvidenceRequired = true AND RefundCase.EvidenceProvided = false" }
+        ]
+      },
+      {
+        "offerId": "Service_PayoutRetry",
+        "ruleName": "Elig_PayoutRetry",
+        "conditions": [
+          { "label": "Payment failure", "expression": "RefundCase.RefundStatus = 'PaymentFailed'" },
+          { "label": "Retry guardrail", "expression": "PaymentPayout.PayoutAttemptCount <= 3" }
+        ]
+      },
+      {
+        "offerId": "Service_RefundSummaryEmail",
+        "ruleName": "Elig_RefundSummaryEmail",
+        "conditions": [
+          { "label": "Email consent", "expression": "CustomerProfile.ConsentEmail = true" },
+          { "label": "Status meaningful", "expression": "RefundCase.RefundStatus IN ['UnderReview','Approved','Paid']" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_ExplainRefundStatus",
+        "treatments": [
+          { "treatmentId": "Treat_Status_InlineBanner", "expression": "true" },
+          { "treatmentId": "Treat_Status_FAQModal", "expression": "StatusCheckSignals.SessionEvent = 'RefundStatusCheckRefresh' AND RefundCase.DaysElapsed >= 7" }
+        ]
+      },
+      {
+        "offerId": "Service_ExpediteReview",
+        "treatments": [
+          { "treatmentId": "Treat_Expedite_RequestTile", "expression": "ContextDerived.EligibleForExpedite = true" },
+          { "treatmentId": "Treat_Expedite_AgentPanel", "expression": "StatusCheckSignals.Channel = 'Agent'" }
+        ]
+      },
+      {
+        "offerId": "Service_ChangePayoutMethod",
+        "treatments": [
+          { "treatmentId": "Treat_PayoutMethod_InlineChooser", "expression": "RefundCase.RefundStatus IN ['Approved','PaymentFailed']" },
+          { "treatmentId": "Treat_PayoutMethod_AgentLink", "expression": "StatusCheckSignals.Channel = 'Agent'" }
+        ]
+      },
+      {
+        "offerId": "Service_VoucherAlternative",
+        "treatments": [
+          { "treatmentId": "Treat_Voucher_InlineOffer", "expression": "OpsPolicyPricing.VoucherAlternativeValuePercent >= 105.0" },
+          { "treatmentId": "Treat_Voucher_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PartialSettlement",
+        "treatments": [
+          { "treatmentId": "Treat_Partial_InlineFlow", "expression": "OpsPolicyPricing.PartialSettlementAllowed = true" },
+          { "treatmentId": "Treat_Partial_AgentPanel", "expression": "StatusCheckSignals.Channel = 'Agent'" }
+        ]
+      },
+      {
+        "offerId": "Service_ProactiveNotifications",
+        "treatments": [
+          { "treatmentId": "Treat_Notify_EnablePush", "expression": "StatusCheckSignals.AppPushEnabled = true AND CustomerProfile.ConsentPush = true" },
+          { "treatmentId": "Treat_Notify_SMSOptIn", "expression": "CustomerProfile.ConsentSMS = true" },
+          { "treatmentId": "Treat_Notify_EmailOptIn", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AgentEscalation",
+        "treatments": [
+          { "treatmentId": "Treat_Escalation_Request", "expression": "ContextDerived.SlaBreached = true OR RefundCase.RefundStatus IN ['PaymentFailed','UnderReview']" },
+          { "treatmentId": "Treat_Escalation_AgentScript", "expression": "StatusCheckSignals.Channel = 'Agent'" }
+        ]
+      },
+      {
+        "offerId": "Service_EvidenceGuidance",
+        "treatments": [
+          { "treatmentId": "Treat_Evidence_StepGuide", "expression": "RefundCase.EvidenceRequired = true AND RefundCase.EvidenceProvided = false" },
+          { "treatmentId": "Treat_Evidence_EmailChecklist", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PayoutRetry",
+        "treatments": [
+          { "treatmentId": "Treat_PayoutRetry_Inline", "expression": "RefundCase.RefundStatus = 'PaymentFailed' AND PaymentPayout.PayoutAttemptCount <= 3" },
+          { "treatmentId": "Treat_PayoutRetry_Agent", "expression": "StatusCheckSignals.Channel = 'Agent'" }
+        ]
+      },
+      {
+        "offerId": "Service_RefundSummaryEmail",
+        "treatments": [
+          { "treatmentId": "Treat_Summary_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with profile, PNR/ticket, refund case, payout rails, policies, and signals.",
+        "logic": [
+          "On refund status check: load CustomerProfile, TripContext, RefundCase, PaymentPayout, OpsPolicyPricing, StatusCheckSignals",
+          "Compute ContextDerived (SLA breach, care priority, voucher appeal, risk, expedite eligibility)"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm refund-status intent and case phase.",
+        "logic": [
+          "IF StatusCheckSignals.SessionEvent IN ['RefundStatusCheckStart','RefundStatusCheckRefresh'] THEN Intent = 'RefundStatus'",
+          "Phase derived from RefundStatus: Review vs Approved vs PaymentFailed"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility; prioritize transparency and blockers removal.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Must-show: ExplainRefundStatus",
+          "If EvidenceRequired and missing => show EvidenceGuidance before alternatives"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and capture reason codes.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set applicability reasons: ['SLAWithinWindow','NoAltRails','VoucherRateTooLow','RiskHigh','EvidenceMissing']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by customer care priority, SLA, and friction reduction.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*SLAUrgency + w3*CarePriority + w4*FrictionReduction",
+          "Priority order: ExplainStatus=100, EvidenceGuidance=95, ExpediteReview=90, ChangePayoutMethod=85, PayoutRetry=80, VoucherAlternative=75, PartialSettlement=70, ProactiveNotifications=65, AgentEscalation=60, RefundSummaryEmail=58"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-specific treatments with minimal effort.",
+        "logic": [
+          "Prefer inline panels/tiles in Web/App, Email/SMS for confirmations",
+          "Avoid simultaneous VoucherAlternative and PartialSettlement in one session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply cadence, sensitivity, and suppression rules before finalization.",
+        "logic": [
+          "Apply global caps, offer-level caps, contextual suppressions",
+          "Suppress promotional content; service-only in refund context"
+        ]
+      },
+      {
+        "id": "Calculator_RefundTimeline",
+        "type": "Calculator",
+        "purpose": "Compute ETA and SLA countdown; evaluate voucher uplift and expedite waiver.",
+        "logic": [
+          "ETA = RefundCase.InitiationDate + RefundCase.SlaDays - RefundCase.DaysElapsed",
+          "VoucherValue = RefundAmount × (VoucherAlternativeValuePercent/100)",
+          "ExpediteEligibility = HighValueCarePriority OR SlaBreached"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatments, trigger workflow (expedite/payout change), and persist IH.",
+        "logic": [
+          "Persist IH: CustomerID, RefundCaseID, OfferID, TreatmentID, Channel, Outcome, ReasonCodes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Boost suitability for actions that reduce time-to-refund and escalations.",
+        "logic": [
+          "Ingest accept/decline rates for change-payout/voucher/expedite",
+          "Increase propensity for treatments that lead to faster Paid outcomes"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_Push": { "maxPer48Hours": 2, "minIntervalHours": 12 },
+      "InSessionPrompts": { "maxPerSession": 3, "noRepeatWithinStep": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_ExplainRefundStatus", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_ExpediteReview", "maxPerSession": 1, "suppressOn": ["ExpediteSubmitted"], "nonCommercial": true },
+      { "offerId": "Service_ChangePayoutMethod", "maxPerSession": 1, "suppressOn": ["PayoutMethodUpdated"], "nonCommercial": true },
+      { "offerId": "Service_VoucherAlternative", "maxPerSession": 1, "suppressOn": ["VoucherIssued"], "nonCommercial": true },
+      { "offerId": "Service_PartialSettlement", "maxPerSession": 1, "suppressOn": ["PartialSettlementStarted"], "nonCommercial": true },
+      { "offerId": "Service_ProactiveNotifications", "maxPerSession": 1, "suppressOn": ["NotifyOptInSet"], "nonCommercial": true },
+      { "offerId": "Service_AgentEscalation", "maxPerSession": 1, "suppressOn": ["CallbackScheduled"], "nonCommercial": true },
+      { "offerId": "Service_EvidenceGuidance", "maxPerSession": 1, "suppressOn": ["EvidenceUploaded"], "nonCommercial": true },
+      { "offerId": "Service_PayoutRetry", "maxPerSession": 1, "suppressOn": ["PayoutAttempted"], "nonCommercial": true },
+      { "offerId": "Service_RefundSummaryEmail", "maxPerSession": 1, "suppressOn": ["SummarySent"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "EvidenceMissing", "rule": "When evidence is required and missing, suppress voucher/partial alternatives until guidance is shown." },
+      { "context": "PaymentFailedHighRisk", "rule": "If RiskScore > 0.7, suppress payout changes; route to AgentEscalation only." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatInSession", "expression": "Do not re-offer the same action within a single refund status session." },
+      { "ruleName": "PostPayoutAttemptQuiet", "expression": "After a payout attempt, suppress new offers for 6 hours; send status updates only." }
+    ]
+  },
+  "channels": ["Web", "App", "Agent", "Email", "SMS", "Push", "Chat"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=PostTravelAndRefunds, Group=RefundStatusSupport. Mark all as service-type; enable reason codes.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* with SLA, risk, payout rails, and evidence checks.",
+    "arbitrationModel": "Service-first ranking—transparency, blockers removal, then acceleration and alternatives; avoid conflicting monetary paths.",
+    "treatmentsMapping": "Inline tiles/panels for Web/App; agent panels for escalations; email/SMS for confirmations and summaries; push toggles for updates.",
+    "contactPolicyConfig": "Apply global and offer-level caps pre-arbitration; enforce suppressions for evidence gaps and high-risk payout failures.",
+    "dataFlows": "Real-time calls to refund case management, payment gateway/payout rails, CRM, and policy services; persist Interaction History for audit and adaptive learning."
+  }
+}
