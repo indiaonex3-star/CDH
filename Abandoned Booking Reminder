@@ -1,0 +1,478 @@
+{
+  "useCase": {
+    "name": "Booking Abandonment after Flight Selection",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "AcquisitionAndConversion",
+    "group": "BookingAbandonmentRecovery",
+    "description": "Real-time NBA when a customer selects flights but abandons the booking. Orchestrates precision nudges, price/hold reassurance, ancillary bundling, payment friction reduction, and agent-assisted recovery to maximize conversion without eroding margin."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "Email", "type": "string" },
+        { "name": "Mobile", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Guest", "Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "LifetimeValueScore", "type": "number" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-118342",
+        "Email": "user@example.com",
+        "Mobile": "+91-9001234567",
+        "LoyaltyTier": "Basic",
+        "LifetimeValueScore": 520.0,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "JourneyContext": {
+      "schema": [
+        { "name": "SessionID", "type": "string" },
+        { "name": "Channel", "type": "string", "enum": ["Web", "App"] },
+        { "name": "Step", "type": "string", "enum": ["FlightSelected", "TravelerDetails", "Ancillaries", "Payment"] },
+        { "name": "AbandonmentTimestamp", "type": "string", "format": "date-time" },
+        { "name": "TimeSinceAbandonmentMinutes", "type": "integer" },
+        { "name": "PromoFieldViewed", "type": "boolean" },
+        { "name": "PaymentFrictionsSeen", "type": "array", "items": { "type": "string" } }
+      ],
+      "sample": {
+        "SessionID": "SESS-7A9B-XY12",
+        "Channel": "Web",
+        "Step": "TravelerDetails",
+        "AbandonmentTimestamp": "2026-08-04T13:25:00Z",
+        "TimeSinceAbandonmentMinutes": 37,
+        "PromoFieldViewed": true,
+        "PaymentFrictionsSeen": ["FormErrors"]
+      }
+    },
+    "ItinerarySelection": {
+      "schema": [
+        { "name": "PNRHoldId", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDate", "type": "string", "format": "date" },
+        { "name": "ReturnDate", "type": "string", "format": "date" },
+        { "name": "IsReturnTrip", "type": "boolean" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] },
+        { "name": "SelectedAncillaries", "type": "array", "items": { "type": "string" } },
+        { "name": "Passengers", "type": "integer" }
+      ],
+      "sample": {
+        "PNRHoldId": "HOLD-9Q2LM",
+        "Origin": "HYD",
+        "Destination": "BLR",
+        "DepartureDate": "2026-09-10",
+        "ReturnDate": "",
+        "IsReturnTrip": false,
+        "CabinClass": "Economy",
+        "FareBrand": "Standard",
+        "SelectedAncillaries": ["SeatSelection"],
+        "Passengers": 2
+      }
+    },
+    "PricingAndInventory": {
+      "schema": [
+        { "name": "BasketTotal", "type": "number" },
+        { "name": "FareAmount", "type": "number" },
+        { "name": "AncillaryAmount", "type": "number" },
+        { "name": "Currency", "type": "string" },
+        { "name": "HoldExpirationTimestamp", "type": "string", "format": "date-time" },
+        { "name": "TimeToHoldExpiryMinutes", "type": "integer" },
+        { "name": "PriceChangeSinceSelectionPercent", "type": "number" },
+        { "name": "SeatsRemainingOnOutbound", "type": "integer" },
+        { "name": "DynamicPriceMultiplier", "type": "number" }
+      ],
+      "sample": {
+        "BasketTotal": 5399.0,
+        "FareAmount": 4899.0,
+        "AncillaryAmount": 500.0,
+        "Currency": "INR",
+        "HoldExpirationTimestamp": "2026-08-04T14:10:00Z",
+        "TimeToHoldExpiryMinutes": 45,
+        "PriceChangeSinceSelectionPercent": 0.0,
+        "SeatsRemainingOnOutbound": 12,
+        "DynamicPriceMultiplier": 1.0
+      }
+    },
+    "BehaviorSignals": {
+      "schema": [
+        { "name": "PromoCodeEntered", "type": "boolean" },
+        { "name": "CompareTabsOpen", "type": "boolean" },
+        { "name": "AbandonmentReason", "type": "string", "enum": ["PriceTooHigh", "UXFriction", "PaymentFriction", "ChangedMind", "Unknown"] },
+        { "name": "DeviceType", "type": "string", "enum": ["Desktop", "Mobile"] },
+        { "name": "Referrer", "type": "string" }
+      ],
+      "sample": {
+        "PromoCodeEntered": false,
+        "CompareTabsOpen": true,
+        "AbandonmentReason": "PriceTooHigh",
+        "DeviceType": "Mobile",
+        "Referrer": "AggregatorSiteX"
+      }
+    },
+    "RiskAndCompliance": {
+      "schema": [
+        { "name": "FraudScore", "type": "number" },
+        { "name": "HighDemandFlight", "type": "boolean" },
+        { "name": "DiscountGuardrailEnabled", "type": "boolean" }
+      ],
+      "sample": {
+        "FraudScore": 0.22,
+        "HighDemandFlight": false,
+        "DiscountGuardrailEnabled": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_HoldReminder", "name": "Hold Reminder & Deadline", "description": "Reassure inventory is held; show countdown to hold expiration." },
+    { "id": "Service_PriceReassurance", "name": "Price Reassurance", "description": "Confirm price stability or limited fluctuation; highlight fare benefits." },
+    { "id": "Offer_ResumeBooking", "name": "Resume Booking", "description": "One-click resume at last completed step with prefilled details." },
+    { "id": "Offer_BundleSaver", "name": "Bundle Saver (Seat + Bag)", "description": "Discounted ancillary bundle to improve value perception." },
+    { "id": "Offer_PaymentEase", "name": "Payment Ease Options", "description": "Provide UPI/wallet/netbanking/BNPL and split pay to reduce friction." },
+    { "id": "Offer_PriceMatchNudge", "name": "Price Match Nudge", "description": "Small, controlled incentive where competitor comparison is detected." },
+    { "id": "Offer_AgentAssist", "name": "Agent-Assisted Completion", "description": "Prioritized callback/chat to complete booking securely." },
+    { "id": "Offer_FareUpgradeValue", "name": "Fare Upgrade Value", "description": "Nudge to Flex/FlexPlus if change fees and benefits reduce future risk." },
+    { "id": "Service_TripProtectionInfo", "name": "Trip Protection Info", "description": "Educate on protection/insurance and change fee implications." },
+    { "id": "Service_AbandonmentEmail", "name": "Abandonment Summary Email", "description": "Clean recap with resume link and hold status." }
+  ],
+  "treatments": {
+    "Service_HoldReminder": [
+      { "id": "Treat_Hold_InlineBanner", "channel": "Web/App", "placement": "HoldCountdownBanner" },
+      { "id": "Treat_Hold_Push", "channel": "Push", "placement": "HoldReminderPush" },
+      { "id": "Treat_Hold_Email", "channel": "Email", "placement": "HoldReminderEmail" }
+    ],
+    "Service_PriceReassurance": [
+      { "id": "Treat_Price_InlineBadge", "channel": "Web/App", "placement": "PriceStableBadge" },
+      { "id": "Treat_Price_CompareTooltip", "channel": "Web/App", "placement": "CompareTooltip" }
+    ],
+    "Offer_ResumeBooking": [
+      { "id": "Treat_Resume_InlineCTA", "channel": "Web/App", "placement": "ResumeCTA" },
+      { "id": "Treat_Resume_EmailLink", "channel": "Email", "placement": "ResumeEmailLink" },
+      { "id": "Treat_Resume_SMSLink", "channel": "SMS", "placement": "ResumeSMSLink" }
+    ],
+    "Offer_BundleSaver": [
+      { "id": "Treat_Bundle_InlineTile", "channel": "Web/App", "placement": "BundleTile" },
+      { "id": "Treat_Bundle_Email", "channel": "Email", "placement": "BundleEmail" }
+    ],
+    "Offer_PaymentEase": [
+      { "id": "Treat_PayEase_InlineChooser", "channel": "Web/App", "placement": "AltPayChooser" },
+      { "id": "Treat_PayEase_ChatLink", "channel": "Chat", "placement": "SecurePayLink" }
+    ],
+    "Offer_PriceMatchNudge": [
+      { "id": "Treat_PriceMatch_Badge", "channel": "Web/App", "placement": "PriceMatchBadge" },
+      { "id": "Treat_PriceMatch_Email", "channel": "Email", "placement": "PriceMatchEmail" }
+    ],
+    "Offer_AgentAssist": [
+      { "id": "Treat_AgentAssist_CallbackTile", "channel": "Web/App", "placement": "CallbackTile" },
+      { "id": "Treat_AgentAssist_Chat", "channel": "Chat", "placement": "ChatConnect" },
+      { "id": "Treat_AgentAssist_SMSConfirm", "channel": "SMS", "placement": "CallbackConfirmation" }
+    ],
+    "Offer_FareUpgradeValue": [
+      { "id": "Treat_FareUpgrade_InlineCompare", "channel": "Web/App", "placement": "FareCompareInline" }
+    ],
+    "Service_TripProtectionInfo": [
+      { "id": "Treat_Protection_InlineInfo", "channel": "Web/App", "placement": "ProtectionInfoPanel" }
+    ],
+    "Service_AbandonmentEmail": [
+      { "id": "Treat_Abandon_Email", "channel": "Email", "placement": "AbandonmentSummaryEmail" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_AbandonmentDetected", "expression": "JourneyContext.Step IN ['FlightSelected','TravelerDetails','Ancillaries','Payment'] AND JourneyContext.AbandonmentTimestamp != null" },
+      { "ruleName": "Common_Eligibility_ActiveHold", "expression": "ItinerarySelection.PNRHoldId != null AND PricingAndInventory.TimeToHoldExpiryMinutes > 0" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_HoldReminder",
+        "ruleName": "Elig_HoldReminder",
+        "conditions": [
+          { "label": "Hold exists and near expiry", "expression": "PricingAndInventory.TimeToHoldExpiryMinutes <= 60" }
+        ]
+      },
+      {
+        "offerId": "Service_PriceReassurance",
+        "ruleName": "Elig_PriceReassurance",
+        "conditions": [
+          { "label": "Price stable or limited change", "expression": "PricingAndInventory.PriceChangeSinceSelectionPercent <= 3.0" },
+          { "label": "Competitor comparison signal", "expression": "BehaviorSignals.CompareTabsOpen = true OR BehaviorSignals.Referrer != ''" }
+        ]
+      },
+      {
+        "offerId": "Offer_ResumeBooking",
+        "ruleName": "Elig_ResumeBooking",
+        "conditions": [
+          { "label": "Recent abandonment window", "expression": "JourneyContext.TimeSinceAbandonmentMinutes <= 4320 /* 72 hours */" },
+          { "label": "Inventory still available", "expression": "PricingAndInventory.SeatsRemainingOnOutbound >= ItinerarySelection.Passengers" }
+        ]
+      },
+      {
+        "offerId": "Offer_BundleSaver",
+        "ruleName": "Elig_BundleSaver",
+        "conditions": [
+          { "label": "Ancillaries relevant", "expression": "ItinerarySelection.SelectedAncillaries NOT CONTAINS 'Baggage' OR ItinerarySelection.SelectedAncillaries NOT CONTAINS 'SeatSelection'" },
+          { "label": "Value guardrail", "expression": "(PricingAndInventory.AncillaryAmount + 800) <= (PricingAndInventory.BasketTotal * 1.15)" }
+        ]
+      },
+      {
+        "offerId": "Offer_PaymentEase",
+        "ruleName": "Elig_PaymentEase",
+        "conditions": [
+          { "label": "Friction observed or payment step abandon", "expression": "JourneyContext.Step IN ['Payment','TravelerDetails'] AND ('FormErrors' IN JourneyContext.PaymentFrictionsSeen OR BehaviorSignals.AbandonmentReason = 'PaymentFriction')" }
+        ]
+      },
+      {
+        "offerId": "Offer_PriceMatchNudge",
+        "ruleName": "Elig_PriceMatchNudge",
+        "conditions": [
+          { "label": "Price sensitivity and comparison", "expression": "BehaviorSignals.CompareTabsOpen = true OR BehaviorSignals.AbandonmentReason = 'PriceTooHigh'" },
+          { "label": "Discount guardrail & margin", "expression": "RiskAndCompliance.DiscountGuardrailEnabled = true AND PricingAndInventory.FareAmount >= 3000" }
+        ]
+      },
+      {
+        "offerId": "Offer_AgentAssist",
+        "ruleName": "Elig_AgentAssist",
+        "conditions": [
+          { "label": "Multiple sessions or complex signals", "expression": "JourneyContext.TimeSinceAbandonmentMinutes > 30 AND (BehaviorSignals.CompareTabsOpen = true OR JourneyContext.Step = 'Payment')" }
+        ]
+      },
+      {
+        "offerId": "Offer_FareUpgradeValue",
+        "ruleName": "Elig_FareUpgradeValue",
+        "conditions": [
+          { "label": "Fare brand restrictive", "expression": "ItinerarySelection.FareBrand = 'Basic'" },
+          { "label": "Future risk mitigation", "expression": "CustomerProfile.LoyaltyTier IN ['Basic','Silver']" }
+        ]
+      },
+      {
+        "offerId": "Service_TripProtectionInfo",
+        "ruleName": "Elig_TripProtectionInfo",
+        "conditions": [
+          { "label": "Customer viewed promo/terms", "expression": "JourneyContext.PromoFieldViewed = true" }
+        ]
+      },
+      {
+        "offerId": "Service_AbandonmentEmail",
+        "ruleName": "Elig_AbandonmentEmail",
+        "conditions": [
+          { "label": "Email consent and recent abandonment", "expression": "CustomerProfile.ConsentEmail = true AND JourneyContext.TimeSinceAbandonmentMinutes <= 1440 /* 24 hours */" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_HoldReminder",
+        "treatments": [
+          { "treatmentId": "Treat_Hold_InlineBanner", "expression": "PricingAndInventory.TimeToHoldExpiryMinutes <= 60" },
+          { "treatmentId": "Treat_Hold_Push", "expression": "CustomerProfile.ConsentPush = true AND JourneyContext.Channel = 'App'" },
+          { "treatmentId": "Treat_Hold_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PriceReassurance",
+        "treatments": [
+          { "treatmentId": "Treat_Price_InlineBadge", "expression": "PricingAndInventory.PriceChangeSinceSelectionPercent <= 3.0" },
+          { "treatmentId": "Treat_Price_CompareTooltip", "expression": "BehaviorSignals.CompareTabsOpen = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_ResumeBooking",
+        "treatments": [
+          { "treatmentId": "Treat_Resume_InlineCTA", "expression": "JourneyContext.Channel IN ['Web','App']" },
+          { "treatmentId": "Treat_Resume_EmailLink", "expression": "CustomerProfile.ConsentEmail = true" },
+          { "treatmentId": "Treat_Resume_SMSLink", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_BundleSaver",
+        "treatments": [
+          { "treatmentId": "Treat_Bundle_InlineTile", "expression": "JourneyContext.Channel IN ['Web','App']" },
+          { "treatmentId": "Treat_Bundle_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_PaymentEase",
+        "treatments": [
+          { "treatmentId": "Treat_PayEase_InlineChooser", "expression": "JourneyContext.Channel IN ['Web','App']" },
+          { "treatmentId": "Treat_PayEase_ChatLink", "expression": "JourneyContext.Channel = 'Web'" }
+        ]
+      },
+      {
+        "offerId": "Offer_PriceMatchNudge",
+        "treatments": [
+          { "treatmentId": "Treat_PriceMatch_Badge", "expression": "BehaviorSignals.CompareTabsOpen = true" },
+          { "treatmentId": "Treat_PriceMatch_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_AgentAssist",
+        "treatments": [
+          { "treatmentId": "Treat_AgentAssist_CallbackTile", "expression": "JourneyContext.Channel IN ['Web','App']" },
+          { "treatmentId": "Treat_AgentAssist_Chat", "expression": "JourneyContext.Channel = 'Web'" },
+          { "treatmentId": "Treat_AgentAssist_SMSConfirm", "expression": "CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_FareUpgradeValue",
+        "treatments": [
+          { "treatmentId": "Treat_FareUpgrade_InlineCompare", "expression": "ItinerarySelection.FareBrand = 'Basic'" }
+        ]
+      },
+      {
+        "offerId": "Service_TripProtectionInfo",
+        "treatments": [
+          { "treatmentId": "Treat_Protection_InlineInfo", "expression": "JourneyContext.Channel IN ['Web','App']" }
+        ]
+      },
+      {
+        "offerId": "Service_AbandonmentEmail",
+        "treatments": [
+          { "treatmentId": "Treat_Abandon_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate abandonment session with profile, itinerary hold, pricing/inventory, signals, and risk guardrails.",
+        "logic": [
+          "On abandonment event: load CustomerProfile, JourneyContext, ItinerarySelection, PricingAndInventory, BehaviorSignals, RiskAndCompliance",
+          "Cache TTL = 120 seconds; keep hold state consistent across channels"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Classify abandonment cause and recovery path.",
+        "logic": [
+          "IF JourneyContext.AbandonmentTimestamp != null THEN Intent = 'BookingAbandonment'",
+          "Sub-causes from BehaviorSignals and step: Price vs Payment vs UX"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility and prioritize reassurance + resume-first.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Must-consider: HoldReminder + ResumeBooking",
+          "Suppress incentives if HighDemandFlight = true or FraudScore > 0.7"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and reason codes.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set applicability reasons: ['HoldExpired','InventoryLow','HighRisk','PriceUnstable','FrictionNotObserved']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by conversion lift, urgency (hold expiry), and margin guardrails.",
+        "logic": [
+          "Score = w1*ResumePriority + w2*Urgency(TimeToHoldExpiry) + w3*AdaptivePropensity + w4*MarginGuardrails",
+          "Base priority: ResumeBooking=100, HoldReminder=95, PriceReassurance=90, PaymentEase=85, BundleSaver=80, AgentAssist=75, PriceMatchNudge=70, FareUpgradeValue=68, TripProtectionInfo=60, AbandonmentEmail=58"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-appropriate treatments with minimal friction.",
+        "logic": [
+          "Prefer inline CTAs and choosers; email/SMS only when consent & post-session",
+          "Limit to one incentive (PriceMatch or Bundle) per session"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply frequency caps and suppressions prior to finalization.",
+        "logic": [
+          "Apply GlobalFrequencyCaps and OfferLevelCaps",
+          "Apply contextual suppressions (HighDemandFlight, HighRisk)",
+          "Apply recency rules to avoid repetitive nudges"
+        ]
+      },
+      {
+        "id": "Calculator_PriceAndBundle",
+        "type": "Calculator",
+        "purpose": "Compute guardrailed price reassurance and bundle value.",
+        "logic": [
+          "PriceStable = PriceChangeSinceSelectionPercent <= 3%",
+          "BundleDiscountShown = min(10%, value guardrail); ensure margin impact within threshold"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment, persist IH, and trigger resume/payment flows.",
+        "logic": [
+          "Persist IH: CustomerID, SessionID, OfferID, TreatmentID, Channel, Outcome, ReasonCodes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Improve propensities for recovery paths by abandonment cause.",
+        "logic": [
+          "Ingest resume clicks, conversions, method selections",
+          "Boost suitability of offers that convert for similar segments and causes"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_Push": { "maxPer48Hours": 2, "minIntervalHours": 12 },
+      "InSessionPrompts": { "maxPerSession": 3, "noRepeatWithinStep": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_HoldReminder", "maxPerSession": 1, "suppressOn": ["HoldExpired"], "nonCommercial": true },
+      { "offerId": "Service_PriceReassurance", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Offer_ResumeBooking", "maxPerSession": 2, "suppressOn": ["BookingResumed"] },
+      { "offerId": "Offer_BundleSaver", "maxPerSession": 1, "suppressOn": ["BundleAccepted"] },
+      { "offerId": "Offer_PaymentEase", "maxPerSession": 1, "suppressOn": ["AltPaySelected"] },
+      { "offerId": "Offer_PriceMatchNudge", "maxPerSession": 1, "suppressOn": ["BookingResumed"], "guardrail": "Only show when DiscountGuardrailEnabled = true" },
+      { "offerId": "Offer_AgentAssist", "maxPerSession": 1, "suppressOn": ["CallbackScheduled"] },
+      { "offerId": "Offer_FareUpgradeValue", "maxPerSession": 1, "suppressOn": ["FareUpgraded"] },
+      { "offerId": "Service_TripProtectionInfo", "maxPerSession": 1, "nonCommercial": true },
+      { "offerId": "Service_AbandonmentEmail", "maxPerSession": 1, "suppressOn": ["SummarySent"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "HighDemandFlight", "rule": "Suppress incentives; allow HoldReminder, ResumeBooking, PaymentEase only." },
+      { "context": "HighRiskSession", "rule": "If FraudScore > 0.7, suppress incentives and agent callback; route to PaymentEase with risk checks." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatInSession", "expression": "Do not re-offer the same action within the same session." },
+      { "ruleName": "PostResumeQuiet", "expression": "After a resume click, suppress further nudges for 2 hours; show confirmations only." }
+    ]
+  },
+  "channels": ["Web", "App", "Email", "SMS", "Push", "Chat", "Agent"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=AcquisitionAndConversion, Group=BookingAbandonmentRecovery. Tag reassurance and resume as service-type; incentives as commercial with guardrails.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* with hold, price stability, friction, and risk checks; add reason codes.",
+    "arbitrationModel": "Resume-first, hold urgency, then friction reducers; use margin guardrails to cap incentives; prefer low-friction actions.",
+    "treatmentsMapping": "Inline banners/CTAs in Web/App; email/SMS only with consent; chat/agent for escalations; single incentive per session.",
+    "contactPolicyConfig": "Apply global and offer-level caps pre-arbitration; enforce contextual suppressions (demand/risk); avoid repetition.",
+    "dataFlows": "Real-time session and basket/hold services, pricing/inventory, risk engine; persist IH for audit and adaptive learning."
+  }
+}
