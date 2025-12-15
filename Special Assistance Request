@@ -1,0 +1,523 @@
+{
+  "useCase": {
+    "name": "Special Assistance: Wheelchair & Medical Support",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "ServiceAndAccessibility",
+    "group": "SpecialAssistanceRequest",
+    "description": "Service-first NBA when a customer requests wheelchair or medical assistance. Orchestrates SSR coding, equipment handling, seat reassignment, priority boarding, oxygen services, medical clearance (MEDIF), and multi-channel confirmations while complying with operational and regulatory policies."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentWhatsApp", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" },
+        { "name": "PrimaryLanguage", "type": "string" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-774512",
+        "FullName": "Meera Srinivasan",
+        "LoyaltyTier": "Silver",
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentWhatsApp": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false,
+        "PrimaryLanguage": "EN"
+      }
+    },
+    "TripContext": {
+      "schema": [
+        { "name": "PNR", "type": "string" },
+        { "name": "TicketNumber", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "FareBrand", "type": "string", "enum": ["Basic", "Standard", "Flex", "FlexPlus", "Premium"] },
+        { "name": "NumberOfPassengers", "type": "integer" },
+        { "name": "SeatSelected", "type": "boolean" },
+        { "name": "HasConnectingFlight", "type": "boolean" },
+        { "name": "ConnectionTimeMinutes", "type": "integer" }
+      ],
+      "sample": {
+        "PNR": "S9K3LM",
+        "TicketNumber": "235-9988776655",
+        "Origin": "HYD",
+        "Destination": "DEL",
+        "DepartureDateTime": "2026-06-18T08:40:00+05:30",
+        "CabinClass": "Economy",
+        "FareBrand": "Standard",
+        "NumberOfPassengers": 1,
+        "SeatSelected": false,
+        "HasConnectingFlight": false,
+        "ConnectionTimeMinutes": 0
+      }
+    },
+    "FlightOperations": {
+      "schema": [
+        { "name": "FlightNumber", "type": "string" },
+        { "name": "SegmentDate", "type": "string", "format": "date" },
+        { "name": "FlightStatus", "type": "string", "enum": ["Scheduled", "Boarding", "Departed", "Cancelled", "Delayed"] },
+        { "name": "AccessibleRowAvailability", "type": "integer" },
+        { "name": "AisleChairAvailable", "type": "boolean" },
+        { "name": "PreboardingCapacityRemaining", "type": "integer" },
+        { "name": "OxygenServiceSupported", "type": "boolean" },
+        { "name": "OxygenCylinderAllowed", "type": "boolean" },
+        { "name": "AirportWheelchairCapacity", "type": "integer" },
+        { "name": "AirportBuggyAvailable", "type": "boolean" },
+        { "name": "SpecialMealSupported", "type": "boolean" }
+      ],
+      "sample": {
+        "FlightNumber": "AI751",
+        "SegmentDate": "2026-06-18",
+        "FlightStatus": "Scheduled",
+        "AccessibleRowAvailability": 5,
+        "AisleChairAvailable": true,
+        "PreboardingCapacityRemaining": 12,
+        "OxygenServiceSupported": true,
+        "OxygenCylinderAllowed": false,
+        "AirportWheelchairCapacity": 8,
+        "AirportBuggyAvailable": true,
+        "SpecialMealSupported": true
+      }
+    },
+    "AssistanceRequest": {
+      "schema": [
+        { "name": "RequestSource", "type": "string", "enum": ["ManageBooking", "CheckIn", "SupportVoice", "SupportChat", "Kiosk"] },
+        { "name": "AssistanceType", "type": "string", "enum": ["Wheelchair", "Medical", "Oxygen", "Escort", "Buggy", "AisleChair"] },
+        { "name": "LeadTimeHours", "type": "integer" },
+        { "name": "WheelchairType", "type": "string", "enum": ["WCHR", "WCHS", "WCHC", "OwnManual", "OwnPowerBattery"] },
+        { "name": "MedicalConditionCode", "type": "string" },
+        { "name": "RequiresMEDIF", "type": "boolean" },
+        { "name": "BatteryType", "type": "string", "enum": ["None", "DryCell", "WetCell", "LithiumIon"] },
+        { "name": "CompanionTravel", "type": "boolean" },
+        { "name": "EquipmentWeightKg", "type": "number" },
+        { "name": "DoctorCertificateAvailable", "type": "boolean" }
+      ],
+      "sample": {
+        "RequestSource": "ManageBooking",
+        "AssistanceType": "Wheelchair",
+        "LeadTimeHours": 48,
+        "WheelchairType": "WCHS",
+        "MedicalConditionCode": "",
+        "RequiresMEDIF": false,
+        "BatteryType": "None",
+        "CompanionTravel": false,
+        "EquipmentWeightKg": 0,
+        "DoctorCertificateAvailable": false
+      }
+    },
+    "MedicalProfile": {
+      "schema": [
+        { "name": "HasChronicCondition", "type": "boolean" },
+        { "name": "ConditionName", "type": "string" },
+        { "name": "RecentHospitalizationWithin30Days", "type": "boolean" },
+        { "name": "PregnancyWeeks", "type": "integer" },
+        { "name": "RequiresOxygenFlowLpm", "type": "number" },
+        { "name": "CarryingPersonalPoc", "type": "boolean" }
+      ],
+      "sample": {
+        "HasChronicCondition": true,
+        "ConditionName": "Mobility impairment",
+        "RecentHospitalizationWithin30Days": false,
+        "PregnancyWeeks": 0,
+        "RequiresOxygenFlowLpm": 0,
+        "CarryingPersonalPoc": false
+      }
+    },
+    "PolicyPricing": {
+      "schema": [
+        { "name": "WheelchairServiceFee", "type": "number" },
+        { "name": "AisleChairFee", "type": "number" },
+        { "name": "BuggyServiceFee", "type": "number" },
+        { "name": "OxygenInFlightFee", "type": "number" },
+        { "name": "SeatReassignmentFee", "type": "number" },
+        { "name": "DynamicPriceMultiplier", "type": "number" }
+      ],
+      "sample": {
+        "WheelchairServiceFee": 0.0,
+        "AisleChairFee": 0.0,
+        "BuggyServiceFee": 0.0,
+        "OxygenInFlightFee": 45.0,
+        "SeatReassignmentFee": 0.0,
+        "DynamicPriceMultiplier": 1.0
+      }
+    },
+    "ContextDerived": {
+      "schema": [
+        { "name": "RegulatoryRestrictions", "type": "array", "items": { "type": "string" } },
+        { "name": "LithiumBatteryAllowed", "type": "boolean" },
+        { "name": "SSRAlreadyAdded", "type": "boolean" },
+        { "name": "AccessibleCompanionSeatAvailable", "type": "boolean" },
+        { "name": "EligibleForPriorityBoarding", "type": "boolean" },
+        { "name": "MultiSegmentItinerary", "type": "boolean" }
+      ],
+      "sample": {
+        "RegulatoryRestrictions": ["NoWetCellBatteriesInHold"],
+        "LithiumBatteryAllowed": true,
+        "SSRAlreadyAdded": false,
+        "AccessibleCompanionSeatAvailable": true,
+        "EligibleForPriorityBoarding": true,
+        "MultiSegmentItinerary": false
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_SSR_Wheelchair", "name": "Add Wheelchair Assistance (SSR)", "description": "Add appropriate SSR (WCHR/WCHS/WCHC) and coordinate airport support." },
+    { "id": "Service_SSR_AisleChair", "name": "Aisle Chair Assistance", "description": "Arrange aisle chair for boarding/deplaning when needed." },
+    { "id": "Service_SSR_BuggyEscort", "name": "Airport Buggy/Escort", "description": "Arrange buggy and escort from curb to gate/security." },
+    { "id": "Service_PriorityBoarding", "name": "Priority Boarding", "description": "Enable pre-boarding for customers with special assistance." },
+    { "id": "Service_SeatReassignment", "name": "Accessible Seat Reassignment", "description": "Reassign to accessible rows/near lavatory avoiding exit rows." },
+    { "id": "Service_SpecialMeal", "name": "Special Meal Request", "description": "Add medical/dietary special meal if supported on route." },
+    { "id": "Service_OxygenCoordination", "name": "Oxygen Service Coordination", "description": "Coordinate in-flight oxygen service or personal POC per policy." },
+    { "id": "Service_MEDIF_Assist", "name": "Medical Clearance (MEDIF) Assistance", "description": "Guide MEDIF form completion and submission if required." },
+    { "id": "Service_Confirmation", "name": "Assistance Confirmation & Instructions", "description": "Provide multi-channel confirmation and airport arrival instructions." },
+    { "id": "Service_CompanionSeat", "name": "Companion Seat Assurance", "description": "Ensure adjacent companion seating where eligible." }
+  ],
+  "treatments": {
+    "Service_SSR_Wheelchair": [
+      { "id": "Treat_WCHR_AgentPanel", "channel": "Agent", "placement": "SSRPanel" },
+      { "id": "Treat_WCHR_WebForm", "channel": "Web/App", "placement": "AssistanceForm" },
+      { "id": "Treat_WCHR_EmailConfirm", "channel": "Email", "placement": "AssistanceConfirmationEmail" }
+    ],
+    "Service_SSR_AisleChair": [
+      { "id": "Treat_Aisle_AgentPanel", "channel": "Agent", "placement": "SSRPanel" },
+      { "id": "Treat_Aisle_WebToggle", "channel": "Web/App", "placement": "AssistanceToggle" }
+    ],
+    "Service_SSR_BuggyEscort": [
+      { "id": "Treat_Buggy_AgentPanel", "channel": "Agent", "placement": "GroundAssistPanel" },
+      { "id": "Treat_Buggy_WebToggle", "channel": "Web/App", "placement": "GroundAssistToggle" }
+    ],
+    "Service_PriorityBoarding": [
+      { "id": "Treat_Preboard_AgentFlag", "channel": "Agent", "placement": "PreboardFlag" },
+      { "id": "Treat_Preboard_WebToggle", "channel": "Web/App", "placement": "PreboardToggle" }
+    ],
+    "Service_SeatReassignment": [
+      { "id": "Treat_Seat_AgentReassign", "channel": "Agent", "placement": "SeatReassignPanel" },
+      { "id": "Treat_Seat_WebSeatMap", "channel": "Web/App", "placement": "AccessibleSeatMap" }
+    ],
+    "Service_SpecialMeal": [
+      { "id": "Treat_Meal_AgentAdd", "channel": "Agent", "placement": "MealRequestPanel" },
+      { "id": "Treat_Meal_WebSelect", "channel": "Web/App", "placement": "MealSelection" }
+    ],
+    "Service_OxygenCoordination": [
+      { "id": "Treat_Oxy_AgentPanel", "channel": "Agent", "placement": "MedicalAssistPanel" },
+      { "id": "Treat_Oxy_EmailInstr", "channel": "Email", "placement": "OxygenInstructionsEmail" }
+    ],
+    "Service_MEDIF_Assist": [
+      { "id": "Treat_MEDIF_WebGuide", "channel": "Web/App", "placement": "MEDIFGuideModal" },
+      { "id": "Treat_MEDIF_AgentScript", "channel": "Agent", "placement": "MEDIFScriptPanel" },
+      { "id": "Treat_MEDIF_EmailLink", "channel": "Email", "placement": "MEDIFDownloadLink" }
+    ],
+    "Service_Confirmation": [
+      { "id": "Treat_Confirm_Email", "channel": "Email", "placement": "AssistanceConfirmationEmail" },
+      { "id": "Treat_Confirm_SMS", "channel": "SMS", "placement": "AssistanceSMS" },
+      { "id": "Treat_Confirm_WhatsApp", "channel": "WhatsApp", "placement": "AssistanceWA" }
+    ],
+    "Service_CompanionSeat": [
+      { "id": "Treat_Companion_AgentPanel", "channel": "Agent", "placement": "CompanionSeatPanel" },
+      { "id": "Treat_Companion_WebToggle", "channel": "Web/App", "placement": "CompanionSeatToggle" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_ActivePNR", "expression": "TripContext.PNR != null AND TripContext.DepartureDateTime > now()" },
+      { "ruleName": "Common_Eligibility_AssistanceIntent", "expression": "AssistanceRequest.AssistanceType IN ['Wheelchair','Medical','Oxygen','Escort','Buggy','AisleChair']" },
+      { "ruleName": "Common_Eligibility_LeadTime", "expression": "AssistanceRequest.LeadTimeHours >= 12" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentWhatsApp) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_SSR_Wheelchair",
+        "ruleName": "Elig_SSR_Wheelchair",
+        "conditions": [
+          { "label": "Wheelchair capacity", "expression": "FlightOperations.AirportWheelchairCapacity >= 1" },
+          { "label": "SSR not duplicate", "expression": "ContextDerived.SSRAlreadyAdded = false" },
+          { "label": "Battery compliance", "expression": "AssistanceRequest.BatteryType != 'WetCell' AND (AssistanceRequest.BatteryType != 'LithiumIon' OR ContextDerived.LithiumBatteryAllowed = true)" }
+        ]
+      },
+      {
+        "offerId": "Service_SSR_AisleChair",
+        "ruleName": "Elig_SSR_AisleChair",
+        "conditions": [
+          { "label": "Aisle chair available", "expression": "FlightOperations.AisleChairAvailable = true" }
+        ]
+      },
+      {
+        "offerId": "Service_SSR_BuggyEscort",
+        "ruleName": "Elig_SSR_Buggy",
+        "conditions": [
+          { "label": "Buggy available", "expression": "FlightOperations.AirportBuggyAvailable = true" },
+          { "label": "Long distance or low mobility", "expression": "AssistanceRequest.AssistanceType IN ['Wheelchair','Escort','Buggy']" }
+        ]
+      },
+      {
+        "offerId": "Service_PriorityBoarding",
+        "ruleName": "Elig_PriorityBoarding",
+        "conditions": [
+          { "label": "Preboard capacity", "expression": "FlightOperations.PreboardingCapacityRemaining >= 1" },
+          { "label": "Eligibility", "expression": "ContextDerived.EligibleForPriorityBoarding = true" }
+        ]
+      },
+      {
+        "offerId": "Service_SeatReassignment",
+        "ruleName": "Elig_SeatReassign",
+        "conditions": [
+          { "label": "Accessible row availability", "expression": "FlightOperations.AccessibleRowAvailability >= 1" },
+          { "label": "Avoid exit rows", "expression": "true /* enforced in seat allocator */" }
+        ]
+      },
+      {
+        "offerId": "Service_SpecialMeal",
+        "ruleName": "Elig_SpecialMeal",
+        "conditions": [
+          { "label": "Route supports special meal", "expression": "FlightOperations.SpecialMealSupported = true" },
+          { "label": "Lead time", "expression": "AssistanceRequest.LeadTimeHours >= 24" }
+        ]
+      },
+      {
+        "offerId": "Service_OxygenCoordination",
+        "ruleName": "Elig_Oxygen",
+        "conditions": [
+          { "label": "Oxygen supported on route", "expression": "FlightOperations.OxygenServiceSupported = true" },
+          { "label": "Policy compliance", "expression": "(AssistanceRequest.AssistanceType = 'Oxygen' OR MedicalProfile.CarryingPersonalPoc = true)" },
+          { "label": "MEDIF or certificate", "expression": "AssistanceRequest.RequiresMEDIF = true OR MedicalProfile.DoctorCertificateAvailable = true" }
+        ]
+      },
+      {
+        "offerId": "Service_MEDIF_Assist",
+        "ruleName": "Elig_MEDIF",
+        "conditions": [
+          { "label": "MEDIF required", "expression": "AssistanceRequest.RequiresMEDIF = true" }
+        ]
+      },
+      {
+        "offerId": "Service_Confirmation",
+        "ruleName": "Elig_Confirm",
+        "conditions": [
+          { "label": "Any assistance added", "expression": "ContextDerived.SSRAlreadyAdded = true OR OfferExecution.AnyServiceActionSelected = true" }
+        ]
+      },
+      {
+        "offerId": "Service_CompanionSeat",
+        "ruleName": "Elig_CompanionSeat",
+        "conditions": [
+          { "label": "Companion traveling", "expression": "AssistanceRequest.CompanionTravel = true" },
+          { "label": "Companion seat available", "expression": "ContextDerived.AccessibleCompanionSeatAvailable = true" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_SSR_Wheelchair",
+        "treatments": [
+          { "treatmentId": "Treat_WCHR_AgentPanel", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_WCHR_WebForm", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn']" },
+          { "treatmentId": "Treat_WCHR_EmailConfirm", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_SSR_AisleChair",
+        "treatments": [
+          { "treatmentId": "Treat_Aisle_AgentPanel", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_Aisle_WebToggle", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn'] AND FlightOperations.AisleChairAvailable = true" }
+        ]
+      },
+      {
+        "offerId": "Service_SSR_BuggyEscort",
+        "treatments": [
+          { "treatmentId": "Treat_Buggy_AgentPanel", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_Buggy_WebToggle", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn'] AND FlightOperations.AirportBuggyAvailable = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PriorityBoarding",
+        "treatments": [
+          { "treatmentId": "Treat_Preboard_AgentFlag", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_Preboard_WebToggle", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn']" }
+        ]
+      },
+      {
+        "offerId": "Service_SeatReassignment",
+        "treatments": [
+          { "treatmentId": "Treat_Seat_AgentReassign", "expression": "SupportChannel.Agent = true AND FlightOperations.AccessibleRowAvailability >= 1" },
+          { "treatmentId": "Treat_Seat_WebSeatMap", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn'] AND FlightOperations.AccessibleRowAvailability >= 1" }
+        ]
+      },
+      {
+        "offerId": "Service_SpecialMeal",
+        "treatments": [
+          { "treatmentId": "Treat_Meal_AgentAdd", "expression": "SupportChannel.Agent = true AND FlightOperations.SpecialMealSupported = true" },
+          { "treatmentId": "Treat_Meal_WebSelect", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn'] AND AssistanceRequest.LeadTimeHours >= 24" }
+        ]
+      },
+      {
+        "offerId": "Service_OxygenCoordination",
+        "treatments": [
+          { "treatmentId": "Treat_Oxy_AgentPanel", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_Oxy_EmailInstr", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_MEDIF_Assist",
+        "treatments": [
+          { "treatmentId": "Treat_MEDIF_WebGuide", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn'] AND AssistanceRequest.RequiresMEDIF = true" },
+          { "treatmentId": "Treat_MEDIF_AgentScript", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_MEDIF_EmailLink", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_Confirmation",
+        "treatments": [
+          { "treatmentId": "Treat_Confirm_Email", "expression": "CustomerProfile.ConsentEmail = true" },
+          { "treatmentId": "Treat_Confirm_SMS", "expression": "CustomerProfile.ConsentSMS = true" },
+          { "treatmentId": "Treat_Confirm_WhatsApp", "expression": "CustomerProfile.ConsentWhatsApp = true" }
+        ]
+      },
+      {
+        "offerId": "Service_CompanionSeat",
+        "treatments": [
+          { "treatmentId": "Treat_Companion_AgentPanel", "expression": "SupportChannel.Agent = true" },
+          { "treatmentId": "Treat_Companion_WebToggle", "expression": "AssistanceRequest.RequestSource IN ['ManageBooking','CheckIn']" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate session with customer profile, PNR/ticket, ops capacity, assistance request details, and policies.",
+        "logic": [
+          "On assistance request: load CustomerProfile, TripContext, FlightOperations, AssistanceRequest, MedicalProfile, PolicyPricing, ContextDerived",
+          "Cache TTL = 180 seconds"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Detect assistance intent (wheelchair/medical/oxygen) and sub-needs.",
+        "logic": [
+          "IF AssistanceRequest.AssistanceType IN ['Wheelchair','Medical','Oxygen','Escort','Buggy','AisleChair'] THEN Intent = 'SpecialAssistance'"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility and prioritize service-only actions.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Mark SSR_Wheelchair, MEDIF_Assist, OxygenCoordination as must-evaluate before any ancillary changes"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility with reason codes.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set applicability reasons: ['CapacityUnavailable','PolicyRestriction','LeadTimeInsufficient','AlreadyAdded']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Service-first ranking based on need criticality and operational feasibility.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*OperationalFeasibility + w3*IntentAlignment + w4*LeadTimeAdequacy",
+          "ServicePriority order: SSR_Wheelchair=100, MEDIF_Assist=95, OxygenCoordination=92, SeatReassignment=85, PriorityBoarding=80, AisleChair=78, BuggyEscort=75, SpecialMeal=68, CompanionSeat=66, Confirmation=60"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-appropriate treatment with lowest friction.",
+        "logic": [
+          "Prefer Agent panels for complex medical/oxygen",
+          "Use Web/App forms/toggles for SSR and seat reassignment where feasible",
+          "Always append Confirmation treatments after successful action"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Enforce sensitivity, cadence, and suppression rules.",
+        "logic": [
+          "Apply global and offer-level caps",
+          "Suppress non-essential prompts during MEDIF/Oxygen coordination"
+        ]
+      },
+      {
+        "id": "ComplianceCalculator",
+        "type": "Calculator",
+        "purpose": "Validate regulatory and policy constraints (battery, oxygen, MEDIF).",
+        "logic": [
+          "If BatteryType = 'WetCell' => block unless special handling route supported",
+          "If Oxygen required and not supported => route to alternative options (POC-only, rebooking)"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Execute SSR additions and seat changes; issue confirmations; persist IH.",
+        "logic": [
+          "Persist IH: CustomerID, PNR, OfferID, TreatmentID, Channel, Outcome, ReasonCodes"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Improve suitability and sequencing for assistance workflows.",
+        "logic": [
+          "Ingest completion rates and exceptions by assistance type",
+          "Boost treatments that reduce rework and escalations"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 3, "minIntervalHours": 12 },
+      "SMS_WhatsApp": { "maxPer48Hours": 2, "minIntervalHours": 12 },
+      "InSessionPrompts": { "maxPerSession": 3, "noRepeatWithinStep": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_SSR_Wheelchair", "maxPerSession": 1, "suppressOn": ["SSRAdded"], "nonCommercial": true },
+      { "offerId": "Service_SSR_AisleChair", "maxPerSession": 1, "suppressOn": ["SSRAdded"], "nonCommercial": true },
+      { "offerId": "Service_SSR_BuggyEscort", "maxPerSession": 1, "suppressOn": ["GroundAssistAdded"], "nonCommercial": true },
+      { "offerId": "Service_PriorityBoarding", "maxPerSession": 1, "suppressOn": ["PreboardFlagSet"], "nonCommercial": true },
+      { "offerId": "Service_SeatReassignment", "maxPerSession": 1, "suppressOn": ["SeatChanged"], "nonCommercial": true },
+      { "offerId": "Service_SpecialMeal", "maxPerTrip": 1, "suppressOn": ["MealAdded"], "nonCommercial": true },
+      { "offerId": "Service_OxygenCoordination", "maxPerSession": 1, "suppressOn": ["OxygenConfirmed"], "nonCommercial": true },
+      { "offerId": "Service_MEDIF_Assist", "maxPerSession": 1, "suppressOn": ["MEDIFSubmitted"], "nonCommercial": true },
+      { "offerId": "Service_Confirmation", "maxPerSession": 2, "nonCommercial": true },
+      { "offerId": "Service_CompanionSeat", "maxPerSession": 1, "suppressOn": ["CompanionSeatSet"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "MedicalCritical", "rule": "When MEDIF/Oxygen coordination is active, suppress non-essential prompts; prioritize compliance and confirmations." },
+      { "context": "CapacityTight", "rule": "If wheelchair/buggy capacity is near zero, suppress duplicate SSR offers and route to agent escalation." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatWithinSession", "expression": "Do not repeat the same assistance offer within a session." },
+      { "ruleName": "PostConfirmationQuietPeriod", "expression": "After assistance confirmed, suppress further prompts for 6 hours; only send updates if details change." }
+    ]
+  },
+  "channels": ["Web", "App", "Agent", "Email", "SMS", "WhatsApp", "Kiosk"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=ServiceAndAccessibility, Group=SpecialAssistanceRequest. Tag all as service-type actions; enable reason codes.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* with capacity/policy checks and lead-time thresholds.",
+    "arbitrationModel": "Service-first, compliance-led ranking; select core SSR and mandatory medical steps before optional enhancements.",
+    "treatmentsMapping": "Provide agent panels for complex cases; web/app forms for SSR and seats; multi-channel confirmations after successful updates.",
+    "contactPolicyConfig": "Apply caps and contextual suppressions pre-arbitration; enforce non-repetition in sensitive medical contexts.",
+    "dataFlows": "Real-time integration to PNR/ticketing (SSR), ops capacity, meal/seat maps, and compliance rules; persist IH for audit and continuous learning."
+  }
+}
