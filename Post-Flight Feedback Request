@@ -1,0 +1,463 @@
+{
+  "useCase": {
+    "name": "Post-Trip Completion: Loyalty Growth, Feedback, and Next-Trip Activation",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "PostTravelAndLoyalty",
+    "group": "PostJourneyEngagement",
+    "description": "NBA triggered when a customer completes their journey. Orchestrates loyalty accrual confirmations, feedback capture, service recovery detection, contextual rebooking nudges, partner earn/redemption, receipt/summary delivery, and profile upkeep—all guardrailed by consent, recency, and suitability."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "attributes": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "Email", "type": "string" },
+        { "name": "Mobile", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-784210",
+        "FullName": "Arjun Verma",
+        "Email": "arjun@example.com",
+        "Mobile": "+91-9001231111",
+        "LoyaltyTier": "Silver",
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "TripSummary": {
+      "attributes": [
+        { "name": "PNR", "type": "string" },
+        { "name": "TicketNumber", "type": "string" },
+        { "name": "Origin", "type": "string" },
+        { "name": "Destination", "type": "string" },
+        { "name": "DepartureDateTime", "type": "string", "format": "date-time" },
+        { "name": "ArrivalDateTime", "type": "string", "format": "date-time" },
+        { "name": "CabinClass", "type": "string", "enum": ["Economy", "PremiumEconomy", "Business"] },
+        { "name": "TotalTripSpend", "type": "number" },
+        { "name": "Segments", "type": "array<object>" },
+        { "name": "CheckedBagsCount", "type": "integer" }
+      ],
+      "sample": {
+        "PNR": "U3M8QK",
+        "TicketNumber": "235-6677889900",
+        "Origin": "HYD",
+        "Destination": "DEL",
+        "DepartureDateTime": "2025-11-10T08:20:00+05:30",
+        "ArrivalDateTime": "2025-11-10T10:15:00+05:30",
+        "CabinClass": "Economy",
+        "TotalTripSpend": 7649.0,
+        "Segments": [
+          { "FlightNumber": "AI211", "SegmentOrigin": "HYD", "SegmentDestination": "DEL", "Departed": true, "Arrived": true }
+        ],
+        "CheckedBagsCount": 1
+      }
+    },
+    "PostTripSignals": {
+      "attributes": [
+        { "name": "TripCompletedEventTime", "type": "string", "format": "date-time" },
+        { "name": "AncillariesPurchased", "type": "array<string>" },
+        { "name": "InFlightIssuesFlag", "type": "boolean" },
+        { "name": "DelayMinutesTotal", "type": "integer" },
+        { "name": "BaggageIssueReported", "type": "boolean" },
+        { "name": "RefundCaseOpened", "type": "boolean" }
+      ],
+      "sample": {
+        "TripCompletedEventTime": "2025-11-10T10:30:00+05:30",
+        "AncillariesPurchased": ["SeatSelection"],
+        "InFlightIssuesFlag": false,
+        "DelayMinutesTotal": 25,
+        "BaggageIssueReported": false,
+        "RefundCaseOpened": false
+      }
+    },
+    "LoyaltyAccrual": {
+      "attributes": [
+        { "name": "BasePointsEarned", "type": "number" },
+        { "name": "BonusPointsEarned", "type": "number" },
+        { "name": "PointsPostingStatus", "type": "string", "enum": ["Pending", "Posted", "Failed"] },
+        { "name": "EstimatedPostingDate", "type": "string", "format": "date" },
+        { "name": "TierProgressPercent", "type": "number" }
+      ],
+      "sample": {
+        "BasePointsEarned": 450,
+        "BonusPointsEarned": 150,
+        "PointsPostingStatus": "Pending",
+        "EstimatedPostingDate": "2025-11-13",
+        "TierProgressPercent": 62.0
+      }
+    },
+    "PartnerEarnRedemption": {
+      "attributes": [
+        { "name": "HotelPartnerEligible", "type": "boolean" },
+        { "name": "CardPartnerEligible", "type": "boolean" },
+        { "name": "CarRentalPartnerEligible", "type": "boolean" },
+        { "name": "PointValueINR", "type": "number" }
+      ],
+      "sample": {
+        "HotelPartnerEligible": true,
+        "CardPartnerEligible": true,
+        "CarRentalPartnerEligible": false,
+        "PointValueINR": 0.5
+      }
+    },
+    "EngagementPreferences": {
+      "attributes": [
+        { "name": "PreferredChannel", "type": "string", "enum": ["Email", "SMS", "Push", "Web", "App"] },
+        { "name": "ReceiptsOptIn", "type": "boolean" },
+        { "name": "SurveysOptIn", "type": "boolean" }
+      ],
+      "sample": {
+        "PreferredChannel": "Email",
+        "ReceiptsOptIn": true,
+        "SurveysOptIn": true
+      }
+    },
+    "RiskAndGuardrails": {
+      "attributes": [
+        { "name": "FraudScore", "type": "number" },
+        { "name": "HighDemandCapacityTight", "type": "boolean" },
+        { "name": "DiscountGuardrailEnabled", "type": "boolean" }
+      ],
+      "sample": {
+        "FraudScore": 0.18,
+        "HighDemandCapacityTight": false,
+        "DiscountGuardrailEnabled": true
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_TripReceiptSummary", "name": "Trip Receipt & Summary", "description": "Deliver a clear receipt/summary: itinerary, spend, points estimate." },
+    { "id": "Service_LoyaltyAccrualExplain", "name": "Loyalty Accrual Explain", "description": "Explain points earned, posting status, and tier progress." },
+    { "id": "Service_PostTripSurvey", "name": "Post-Trip Survey", "description": "Capture NPS and quick feedback to improve service." },
+    { "id": "Service_IssueResolutionAssist", "name": "Issue Resolution Assist", "description": "Fast path for delay/baggage/refund issues detected." },
+    { "id": "Offer_NextTripPersonalized", "name": "Next Trip Personalized Deal", "description": "Contextual rebate or fare suggestion for next trip from home airport." },
+    { "id": "Offer_PartnerEarnStarter", "name": "Partner Earn Starter", "description": "Hotel/card partner earn to keep momentum post-trip." },
+    { "id": "Offer_RedeemMicro", "name": "Micro Redemption Ideas", "description": "Small redemptions to use points while posting completes." },
+    { "id": "Service_ProfileAndConsentRefresh", "name": "Profile & Consent Refresh", "description": "Update contacts, preferences, and notification settings." },
+    { "id": "Service_WatchlistEnable", "name": "Enable Route Watchlist", "description": "Add common routes to watchlist for price-drop alerts." }
+  ],
+  "treatments": {
+    "Service_TripReceiptSummary": [
+      { "id": "Treat_Receipt_Email", "channel": "Email", "placement": "TripReceiptEmail" },
+      { "id": "Treat_Receipt_Inline", "channel": "Web/App", "placement": "ManageBookingSummary" }
+    ],
+    "Service_LoyaltyAccrualExplain": [
+      { "id": "Treat_Accrual_Inline", "channel": "Web/App", "placement": "LoyaltyAccrualPanel" },
+      { "id": "Treat_Accrual_Email", "channel": "Email", "placement": "PointsSummaryEmail" }
+    ],
+    "Service_PostTripSurvey": [
+      { "id": "Treat_Survey_Inline", "channel": "Web/App", "placement": "SurveyInline" },
+      { "id": "Treat_Survey_Email", "channel": "Email", "placement": "SurveyEmail" }
+    ],
+    "Service_IssueResolutionAssist": [
+      { "id": "Treat_Issue_Inline", "channel": "Web/App", "placement": "IssueAssistPanel" },
+      { "id": "Treat_Issue_Email", "channel": "Email", "placement": "IssueAssistEmail" }
+    ],
+    "Offer_NextTripPersonalized": [
+      { "id": "Treat_NextTrip_Tile", "channel": "Web/App", "placement": "NextTripTile" },
+      { "id": "Treat_NextTrip_Email", "channel": "Email", "placement": "NextTripEmail" }
+    ],
+    "Offer_PartnerEarnStarter": [
+      { "id": "Treat_Partner_Tile", "channel": "Web/App", "placement": "PartnerEarnTile" },
+      { "id": "Treat_Partner_Email", "channel": "Email", "placement": "PartnerEarnEmail" }
+    ],
+    "Offer_RedeemMicro": [
+      { "id": "Treat_Redeem_Tile", "channel": "Web/App", "placement": "RedeemIdeasTile" },
+      { "id": "Treat_Redeem_Email", "channel": "Email", "placement": "RedeemIdeasEmail" }
+    ],
+    "Service_ProfileAndConsentRefresh": [
+      { "id": "Treat_Consent_Inline", "channel": "Web/App", "placement": "ConsentInline" },
+      { "id": "Treat_Consent_Email", "channel": "Email", "placement": "ConsentEmail" }
+    ],
+    "Service_WatchlistEnable": [
+      { "id": "Treat_Watchlist_Inline", "channel": "Web/App", "placement": "WatchlistInline" },
+      { "id": "Treat_Watchlist_Email", "channel": "Email", "placement": "WatchlistEmail" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_TripCompleted", "expression": "TripSummary.ArrivalDateTime != null AND TripSummary.ArrivalDateTime <= now()" },
+      { "ruleName": "Common_Eligibility_RecencyWindow", "expression": "dateDiffHours(TripSummary.ArrivalDateTime, now()) <= 168 /* 7 days */" },
+      { "ruleName": "Common_Eligibility_ChannelReachable", "expression": "(CustomerProfile.ConsentEmail OR CustomerProfile.ConsentSMS OR CustomerProfile.ConsentPush) = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_TripReceiptSummary",
+        "ruleName": "Elig_TripReceiptSummary",
+        "conditions": [
+          "EngagementPreferences.ReceiptsOptIn = true OR TripSummary.TotalTripSpend > 0"
+        ]
+      },
+      {
+        "offerId": "Service_LoyaltyAccrualExplain",
+        "ruleName": "Elig_LoyaltyAccrualExplain",
+        "conditions": [
+          "LoyaltyAccrual.PointsPostingStatus IN ['Pending','Posted']",
+          "LoyaltyAccrual.BasePointsEarned + LoyaltyAccrual.BonusPointsEarned > 0"
+        ]
+      },
+      {
+        "offerId": "Service_PostTripSurvey",
+        "ruleName": "Elig_PostTripSurvey",
+        "conditions": [
+          "PostTripSignals.InFlightIssuesFlag = false",
+          "EngagementPreferences.SurveysOptIn = true"
+        ]
+      },
+      {
+        "offerId": "Service_IssueResolutionAssist",
+        "ruleName": "Elig_IssueResolutionAssist",
+        "conditions": [
+          "PostTripSignals.InFlightIssuesFlag = true OR PostTripSignals.DelayMinutesTotal >= 60 OR PostTripSignals.BaggageIssueReported = true OR PostTripSignals.RefundCaseOpened = true"
+        ]
+      },
+      {
+        "offerId": "Offer_NextTripPersonalized",
+        "ruleName": "Elig_NextTripPersonalized",
+        "conditions": [
+          "RiskAndGuardrails.DiscountGuardrailEnabled = true",
+          "CustomerProfile.CountryOfResidence != ''"
+        ]
+      },
+      {
+        "offerId": "Offer_PartnerEarnStarter",
+        "ruleName": "Elig_PartnerEarnStarter",
+        "conditions": [
+          "PartnerEarnRedemption.HotelPartnerEligible = true OR PartnerEarnRedemption.CardPartnerEligible = true"
+        ]
+      },
+      {
+        "offerId": "Offer_RedeemMicro",
+        "ruleName": "Elig_RedeemMicro",
+        "conditions": [
+          "LoyaltyAccrual.RedeemablePointsPending = null OR true",
+          "PartnerEarnRedemption.PointValueINR >= 0.4"
+        ]
+      },
+      {
+        "offerId": "Service_ProfileAndConsentRefresh",
+        "ruleName": "Elig_ProfileConsentRefresh",
+        "conditions": [
+          "CustomerProfile.Email = '' OR CustomerProfile.Mobile = '' OR CustomerProfile.ConsentPush = false"
+        ]
+      },
+      {
+        "offerId": "Service_WatchlistEnable",
+        "ruleName": "Elig_WatchlistEnable",
+        "conditions": [
+          "size(PostTripSignals.AncillariesPurchased) >= 0",
+          "true"
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_TripReceiptSummary",
+        "treatments": [
+          { "treatmentId": "Treat_Receipt_Email", "expression": "CustomerProfile.ConsentEmail = true AND EngagementPreferences.ReceiptsOptIn = true" },
+          { "treatmentId": "Treat_Receipt_Inline", "expression": "true" }
+        ]
+      },
+      {
+        "offerId": "Service_LoyaltyAccrualExplain",
+        "treatments": [
+          { "treatmentId": "Treat_Accrual_Inline", "expression": "true" },
+          { "treatmentId": "Treat_Accrual_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PostTripSurvey",
+        "treatments": [
+          { "treatmentId": "Treat_Survey_Inline", "expression": "EngagementPreferences.SurveysOptIn = true" },
+          { "treatmentId": "Treat_Survey_Email", "expression": "CustomerProfile.ConsentEmail = true AND EngagementPreferences.SurveysOptIn = true" }
+        ]
+      },
+      {
+        "offerId": "Service_IssueResolutionAssist",
+        "treatments": [
+          { "treatmentId": "Treat_Issue_Inline", "expression": "true" },
+          { "treatmentId": "Treat_Issue_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_NextTripPersonalized",
+        "treatments": [
+          { "treatmentId": "Treat_NextTrip_Tile", "expression": "RiskAndGuardrails.DiscountGuardrailEnabled = true" },
+          { "treatmentId": "Treat_NextTrip_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_PartnerEarnStarter",
+        "treatments": [
+          { "treatmentId": "Treat_Partner_Tile", "expression": "PartnerEarnRedemption.HotelPartnerEligible = true OR PartnerEarnRedemption.CardPartnerEligible = true" },
+          { "treatmentId": "Treat_Partner_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Offer_RedeemMicro",
+        "treatments": [
+          { "treatmentId": "Treat_Redeem_Tile", "expression": "PartnerEarnRedemption.PointValueINR >= 0.4" },
+          { "treatmentId": "Treat_Redeem_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_ProfileAndConsentRefresh",
+        "treatments": [
+          { "treatmentId": "Treat_Consent_Inline", "expression": "true" },
+          { "treatmentId": "Treat_Consent_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_WatchlistEnable",
+        "treatments": [
+          { "treatmentId": "Treat_Watchlist_Inline", "expression": "true" },
+          { "treatmentId": "Treat_Watchlist_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate post-trip session with customer, trip summary, loyalty accrual, partner eligibility, preferences, and risk guardrails.",
+        "logic": [
+          "Load CustomerProfile, TripSummary, PostTripSignals, LoyaltyAccrual, PartnerEarnRedemption, EngagementPreferences, RiskAndGuardrails",
+          "Cache TTL = 180 seconds; dedupe by CustomerID + PNR"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm 'TripCompleted' intent and detect sub-intents (service-recovery vs celebration vs next-trip).",
+        "logic": [
+          "IF Common_Eligibility_TripCompleted AND Common_Eligibility_RecencyWindow THEN Intent='PostTrip'",
+          "Sub-intent = 'Recovery' if IssueResolutionAssist eligible; else 'Celebrate' (Accrual/Receipt); else 'NextTrip'"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility; prioritize service-first and avoid pressure.",
+        "logic": [
+          "Apply Common_Eligibility_*",
+          "If Recovery sub-intent => offer IssueResolutionAssist before Survey/NextTrip",
+          "Suppress commercial actions if FraudScore > 0.7"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and record reason codes.",
+        "logic": [
+          "Run Elig_* per offer",
+          "Set reasons: ['NoConsent','NoPoints','RecoveryPriority','GuardrailBlocked','LowValue']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions balancing customer care, suitability, and future value.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*Suitability + w3*FutureValue + w4*AdaptivePropensity",
+          "Baseline: IssueResolutionAssist=100, TripReceiptSummary=95, LoyaltyAccrualExplain=92, PostTripSurvey=85, NextTripPersonalized=80, PartnerEarnStarter=75, RedeemMicro=72, ProfileAndConsentRefresh=68, WatchlistEnable=60"
+        ]
+      },
+      {
+        "id": "Calculator_ValueDisclosure",
+        "type": "Calculator",
+        "purpose": "Compute points disclosure, partner value, and next-trip indicative savings.",
+        "logic": [
+          "PointsTotal = BasePointsEarned + BonusPointsEarned",
+          "TierProgressNext = min(100, LoyaltyAccrual.TierProgressPercent + (PointsTotal/1000)*5)",
+          "NextTripSavingHint = f(Customer history, route demand, DiscountGuardrailEnabled)"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Select channel-appropriate treatments with minimal friction.",
+        "logic": [
+          "Prefer inline in Web/App for receipts/accrual; emails for summaries; SMS for confirmations",
+          "Limit to 2 concurrent offers per session; avoid NextTrip + Partner stacking if Recovery active"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Apply cadence caps, contextual suppressions, and recency rules.",
+        "logic": [
+          "Enforce global caps and offer-level caps",
+          "If Recovery active => suppress commercial outbound for 48 hours",
+          "Quiet hours: defer Email/SMS between 22:00–07:00 IST unless consented for transactional (Receipt)"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatments, trigger workflows (issue assist, partner flows), and persist Interaction History.",
+        "logic": [
+          "Persist IH: CustomerID, PNR, OfferID, TreatmentID, Channel, Outcome, ReasonCodes, PointsTotal"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Improve suitability by post-trip context and offer mix.",
+        "logic": [
+          "Ingest impressions, clicks, survey completions, partner enrolls, next-trip bookings",
+          "Boost actions that drive satisfaction and future bookings; dampen low-performing mixes"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_Push": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "InSessionPrompts": { "maxPerSession": 2, "noRepeatWithinSession": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_TripReceiptSummary", "maxPerTrip": 1, "nonCommercial": true },
+      { "offerId": "Service_LoyaltyAccrualExplain", "maxPerTrip": 1, "nonCommercial": true },
+      { "offerId": "Service_PostTripSurvey", "maxPerTrip": 1, "suppressOn": ["SurveyCompleted"], "nonCommercial": true },
+      { "offerId": "Service_IssueResolutionAssist", "maxPerTrip": 1, "suppressOn": ["IssueAssistStarted"], "nonCommercial": true },
+      { "offerId": "Offer_NextTripPersonalized", "maxPer7Days": 1, "suppressOn": ["NextTripClicked"] },
+      { "offerId": "Offer_PartnerEarnStarter", "maxPer30Days": 1, "suppressOn": ["PartnerEnrollStarted"] },
+      { "offerId": "Offer_RedeemMicro", "maxPer14Days": 1, "suppressOn": ["RedeemClicked"] },
+      { "offerId": "Service_ProfileAndConsentRefresh", "maxPer30Days": 1, "suppressOn": ["ConsentUpdated"], "nonCommercial": true },
+      { "offerId": "Service_WatchlistEnable", "maxPer30Days": 1, "suppressOn": ["WatchlistEnabled"], "nonCommercial": true }
+    ],
+    "contextualSuppressions": [
+      { "context": "RecoveryActive", "rule": "If IssueResolutionAssist eligible, suppress commercial outbound for 48 hours; allow transactional (Receipt/Accrual)." },
+      { "context": "HighRisk", "rule": "If FraudScore > 0.7, suppress commercial offers; show service-only actions." },
+      { "context": "QuietHours", "rule": "Defer non-transactional Email/SMS between 22:00–07:00 IST." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatInSession", "expression": "Do not repeat the same offer in one session." },
+      { "ruleName": "PostSurveyQuiet", "expression": "After survey completion, suppress further surveys for 90 days." },
+      { "ruleName": "PostReceiptOnly", "expression": "After sending receipt, avoid additional transactional emails in 24 hours." }
+    ]
+  },
+  "channels": ["Web", "App", "Email", "SMS", "Push", "Agent"],
+  "implementationNotes": {
+    "actionsModeling": "Model Actions under Issue=PostTravelAndLoyalty, Group=PostJourneyEngagement. Tag service vs commercial; enable reason codes.",
+    "eligibilityImplementation": "Apply Common_Eligibility first; implement Elig_* per offer with recovery checks, loyalty accrual, and consent; log reason codes for audit.",
+    "arbitrationModel": "Service-first ranking prioritizing recovery, then celebration (receipt/accrual), then gentle next-trip nudges.",
+    "treatmentsMapping": "Transactional emails for receipt; inline panels for accrual/survey; careful outbound cadence for commercial offers.",
+    "contactPolicyConfig": "Strict cadence and suppressions when recovery active; quiet hours honored; single transactional per trip.",
+    "dataFlows": "Batch + real-time post-flight events, loyalty posting, partner eligibility, preferences; persist Interaction History for adaptive learning."
+  }
+}
