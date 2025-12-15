@@ -1,0 +1,468 @@
+{
+  "useCase": {
+    "name": "Payment Failure: Recovery & Conversion",
+    "domain": "Airline",
+    "platform": "Pega CDH",
+    "issue": "CheckoutAndPayments",
+    "group": "PaymentFailureRecovery",
+    "description": "Service-first NBA when a customer attempts payment and the transaction fails. Orchestrates retry paths, alternative payment methods, split payments, BNPL, SCA guidance, and agent-assisted completion while preserving basket and session context."
+  },
+  "dataModels": {
+    "CustomerProfile": {
+      "schema": [
+        { "name": "CustomerID", "type": "string" },
+        { "name": "FullName", "type": "string" },
+        { "name": "Email", "type": "string" },
+        { "name": "Mobile", "type": "string" },
+        { "name": "LoyaltyTier", "type": "string", "enum": ["Basic", "Silver", "Gold", "Platinum"] },
+        { "name": "LifetimeValueScore", "type": "number" },
+        { "name": "ConsentEmail", "type": "boolean" },
+        { "name": "ConsentSMS", "type": "boolean" },
+        { "name": "ConsentPush", "type": "boolean" },
+        { "name": "CountryOfResidence", "type": "string" },
+        { "name": "BlacklistFlag", "type": "boolean" }
+      ],
+      "sample": {
+        "CustomerID": "CUST-992014",
+        "FullName": "Priya Sharma",
+        "Email": "priya@example.com",
+        "Mobile": "+91-9000000000",
+        "LoyaltyTier": "Silver",
+        "LifetimeValueScore": 710.3,
+        "ConsentEmail": true,
+        "ConsentSMS": true,
+        "ConsentPush": false,
+        "CountryOfResidence": "IN",
+        "BlacklistFlag": false
+      }
+    },
+    "CheckoutContext": {
+      "schema": [
+        { "name": "SessionID", "type": "string" },
+        { "name": "PNR", "type": "string" },
+        { "name": "BookingChannel", "type": "string", "enum": ["Web", "App", "Agent"] },
+        { "name": "BasketTotal", "type": "number" },
+        { "name": "FareAmount", "type": "number" },
+        { "name": "AncillaryAmount", "type": "number" },
+        { "name": "Currency", "type": "string" },
+        { "name": "AttemptCount", "type": "integer" },
+        { "name": "LastAttemptTimestamp", "type": "string", "format": "date-time" },
+        { "name": "HoldExpirationTimestamp", "type": "string", "format": "date-time" },
+        { "name": "PromoCodeApplied", "type": "boolean" }
+      ],
+      "sample": {
+        "SessionID": "SESS-ABCD-1234",
+        "PNR": "H3K9LM",
+        "BookingChannel": "Web",
+        "BasketTotal": 238.5,
+        "FareAmount": 190.0,
+        "AncillaryAmount": 48.5,
+        "Currency": "INR",
+        "AttemptCount": 2,
+        "LastAttemptTimestamp": "2026-05-05T08:16:22Z",
+        "HoldExpirationTimestamp": "2026-05-05T09:00:00Z",
+        "PromoCodeApplied": true
+      }
+    },
+    "PaymentAttempt": {
+      "schema": [
+        { "name": "PaymentMethod", "type": "string", "enum": ["Card", "UPI", "NetBanking", "Wallet", "BNPL"] },
+        { "name": "CardBIN", "type": "string" },
+        { "name": "IssuerCountry", "type": "string" },
+        { "name": "FailureReason", "type": "string", "enum": ["InsufficientFunds", "SCARequired", "IssuerDeclined", "Timeout", "3DSFailure", "InvalidDetails", "RiskBlocked", "NetworkError"] },
+        { "name": "GatewayCode", "type": "string" },
+        { "name": "RequiresSCA", "type": "boolean" },
+        { "name": "RiskScore", "type": "number" },
+        { "name": "RetryRecommended", "type": "boolean" },
+        { "name": "AlternativeMethodsAvailable", "type": "array", "items": { "type": "string" } }
+      ],
+      "sample": {
+        "PaymentMethod": "Card",
+        "CardBIN": "411111",
+        "IssuerCountry": "IN",
+        "FailureReason": "SCARequired",
+        "GatewayCode": "3DS_STEP_UP",
+        "RequiresSCA": true,
+        "RiskScore": 0.22,
+        "RetryRecommended": true,
+        "AlternativeMethodsAvailable": ["UPI", "NetBanking", "Wallet", "BNPL"]
+      }
+    },
+    "OperationalGuards": {
+      "schema": [
+        { "name": "InventoryProtected", "type": "boolean" },
+        { "name": "TimeToHoldExpiryMinutes", "type": "integer" },
+        { "name": "FraudCheckPassed", "type": "boolean" },
+        { "name": "HighDemandFlight", "type": "boolean" },
+        { "name": "CurrencySupported", "type": "boolean" }
+      ],
+      "sample": {
+        "InventoryProtected": true,
+        "TimeToHoldExpiryMinutes": 34,
+        "FraudCheckPassed": true,
+        "HighDemandFlight": false,
+        "CurrencySupported": true
+      }
+    },
+    "PricingRules": {
+      "schema": [
+        { "name": "BNPLMinBasket", "type": "number" },
+        { "name": "SplitPayMinBasket", "type": "number" },
+        { "name": "GraceFeeWaiverEligible", "type": "boolean" },
+        { "name": "DynamicPriceMultiplier", "type": "number" }
+      ],
+      "sample": {
+        "BNPLMinBasket": 80.0,
+        "SplitPayMinBasket": 120.0,
+        "GraceFeeWaiverEligible": true,
+        "DynamicPriceMultiplier": 1.0
+      }
+    }
+  },
+  "offers": [
+    { "id": "Service_SCAHelp", "name": "Strong Customer Authentication Help", "description": "Guide the customer through OTP/3DS/SCA steps and browser/app-specific tips." },
+    { "id": "Service_PaymentRetry", "name": "Smart Payment Retry", "description": "Retry with same method after clearing cache, re-initiating 3DS, or switching gateway." },
+    { "id": "AltPay_UPI", "name": "Pay via UPI", "description": "Offer UPI as an instant alternative with QR/intent flow." },
+    { "id": "AltPay_NetBanking", "name": "Pay via NetBanking", "description": "Switch to bank transfer for domestic issuers." },
+    { "id": "AltPay_Wallet", "name": "Pay via Wallet", "description": "Use supported wallets for faster authorization." },
+    { "id": "BNPL_Installments", "name": "BNPL Installments", "description": "Spread payments over installments for eligible baskets and markets." },
+    { "id": "SplitPayment", "name": "Split Payment (Fare vs Ancillary)", "description": "Capture fare first and ancillaries in a second payment to reduce initial authorization friction." },
+    { "id": "GraceHoldExtension", "name": "Extend Booking Hold", "description": "Extend cart hold to preserve inventory while resolving payment issues." },
+    { "id": "AgentAssistCheckout", "name": "Agent-Assisted Checkout", "description": "Complete payment via secure agent workflow with alternative routing." },
+    { "id": "FeeWaiverSmallDelta", "name": "Fee Waiver for Small Delta", "description": "Waive minor differences or retry fees to reduce friction at checkout." }
+  ],
+  "treatments": {
+    "Service_SCAHelp": [
+      { "id": "Treat_SCAHelp_InlineGuide", "channel": "Web/App", "placement": "PaymentErrorBanner" },
+      { "id": "Treat_SCAHelp_ChatCard", "channel": "Chat", "placement": "SCAChecklistCard" },
+      { "id": "Treat_SCAHelp_Email", "channel": "Email", "placement": "SCAInstructions" }
+    ],
+    "Service_PaymentRetry": [
+      { "id": "Treat_Retry_InlineCTA", "channel": "Web/App", "placement": "RetryCTA" },
+      { "id": "Treat_Retry_AgentScript", "channel": "Agent", "placement": "RetryScript" }
+    ],
+    "AltPay_UPI": [
+      { "id": "Treat_UPI_QR", "channel": "Web/App", "placement": "UPI_QR_Intent" },
+      { "id": "Treat_UPI_AgentLink", "channel": "Agent", "placement": "UPILinkSMS" }
+    ],
+    "AltPay_NetBanking": [
+      { "id": "Treat_NB_BankList", "channel": "Web/App", "placement": "NetBankingSelector" },
+      { "id": "Treat_NB_AgentLink", "channel": "Agent", "placement": "NetBankingLinkSMS" }
+    ],
+    "AltPay_Wallet": [
+      { "id": "Treat_Wallet_List", "channel": "Web/App", "placement": "WalletsList" }
+    ],
+    "BNPL_Installments": [
+      { "id": "Treat_BNPL_Toggle", "channel": "Web/App", "placement": "PaymentOptionToggle" },
+      { "id": "Treat_BNPL_EmailSchedule", "channel": "Email", "placement": "InstallmentSchedule" }
+    ],
+    "SplitPayment": [
+      { "id": "Treat_SplitPay_Inline", "channel": "Web/App", "placement": "SplitPaymentOption" },
+      { "id": "Treat_SplitPay_Agent", "channel": "Agent", "placement": "SplitPaymentWorkflow" }
+    ],
+    "GraceHoldExtension": [
+      { "id": "Treat_HoldExtend_Inline", "channel": "Web/App", "placement": "ExtendHoldDialog" },
+      { "id": "Treat_HoldExtend_Agent", "channel": "Agent", "placement": "HoldExtendPanel" }
+    ],
+    "AgentAssistCheckout": [
+      { "id": "Treat_AgentAssist_CallMe", "channel": "Web/App", "placement": "CallbackOffer" },
+      { "id": "Treat_AgentAssist_Chat", "channel": "Chat", "placement": "SecurePayLink" }
+    ],
+    "FeeWaiverSmallDelta": [
+      { "id": "Treat_FeeWaiver_Apply", "channel": "Agent", "placement": "WaiverPanel" },
+      { "id": "Treat_FeeWaiver_Auto", "channel": "Web/App", "placement": "AutoWaiverAppliedBanner" }
+    ]
+  },
+  "eligibility": {
+    "common": [
+      { "ruleName": "Common_Eligibility_NotBlacklisted", "expression": "CustomerProfile.BlacklistFlag = false" },
+      { "ruleName": "Common_Eligibility_ActiveCheckout", "expression": "CheckoutContext.SessionID != null AND CheckoutContext.BasketTotal > 0" },
+      { "ruleName": "Common_Eligibility_FailureDetected", "expression": "PaymentAttempt.FailureReason != null" },
+      { "ruleName": "Common_Eligibility_InventoryProtected", "expression": "OperationalGuards.InventoryProtected = true AND OperationalGuards.TimeToHoldExpiryMinutes > 0" },
+      { "ruleName": "Common_Eligibility_FraudCleared", "expression": "OperationalGuards.FraudCheckPassed = true" }
+    ],
+    "individual": [
+      {
+        "offerId": "Service_SCAHelp",
+        "ruleName": "Elig_SCAHelp",
+        "conditions": [
+          { "label": "SCA required or 3DS failure", "expression": "PaymentAttempt.RequiresSCA = true OR PaymentAttempt.FailureReason IN ['3DSFailure','SCARequired']" }
+        ]
+      },
+      {
+        "offerId": "Service_PaymentRetry",
+        "ruleName": "Elig_PaymentRetry",
+        "conditions": [
+          { "label": "Retry recommended", "expression": "PaymentAttempt.RetryRecommended = true" },
+          { "label": "Attempts guardrail", "expression": "CheckoutContext.AttemptCount <= 3" }
+        ]
+      },
+      {
+        "offerId": "AltPay_UPI",
+        "ruleName": "Elig_UPI",
+        "conditions": [
+          { "label": "UPI available", "expression": "PaymentAttempt.AlternativeMethodsAvailable CONTAINS 'UPI'" },
+          { "label": "Domestic issuer", "expression": "CustomerProfile.CountryOfResidence = 'IN' AND PaymentAttempt.IssuerCountry = 'IN'" }
+        ]
+      },
+      {
+        "offerId": "AltPay_NetBanking",
+        "ruleName": "Elig_NetBanking",
+        "conditions": [
+          { "label": "NetBanking available", "expression": "PaymentAttempt.AlternativeMethodsAvailable CONTAINS 'NetBanking'" },
+          { "label": "Currency supported", "expression": "OperationalGuards.CurrencySupported = true" }
+        ]
+      },
+      {
+        "offerId": "AltPay_Wallet",
+        "ruleName": "Elig_Wallet",
+        "conditions": [
+          { "label": "Wallet available", "expression": "PaymentAttempt.AlternativeMethodsAvailable CONTAINS 'Wallet'" }
+        ]
+      },
+      {
+        "offerId": "BNPL_Installments",
+        "ruleName": "Elig_BNPL",
+        "conditions": [
+          { "label": "Basket threshold", "expression": "CheckoutContext.BasketTotal >= PricingRules.BNPLMinBasket" },
+          { "label": "Market & method", "expression": "PaymentAttempt.AlternativeMethodsAvailable CONTAINS 'BNPL' AND CustomerProfile.CountryOfResidence IN ['IN','NL','FR','ES']" }
+        ]
+      },
+      {
+        "offerId": "SplitPayment",
+        "ruleName": "Elig_SplitPay",
+        "conditions": [
+          { "label": "Basket threshold", "expression": "CheckoutContext.BasketTotal >= PricingRules.SplitPayMinBasket" },
+          { "label": "Ancillary present", "expression": "CheckoutContext.AncillaryAmount > 0" },
+          { "label": "Risk acceptable", "expression": "PaymentAttempt.RiskScore <= 0.5" }
+        ]
+      },
+      {
+        "offerId": "GraceHoldExtension",
+        "ruleName": "Elig_HoldExtend",
+        "conditions": [
+          { "label": "Hold nearing expiry", "expression": "OperationalGuards.TimeToHoldExpiryMinutes <= 45" },
+          { "label": "High demand guardrail", "expression": "OperationalGuards.HighDemandFlight = false" }
+        ]
+      },
+      {
+        "offerId": "AgentAssistCheckout",
+        "ruleName": "Elig_AgentAssist",
+        "conditions": [
+          { "label": "Multiple failures", "expression": "CheckoutContext.AttemptCount >= 2" },
+          { "label": "Alternative routing needed", "expression": "PaymentAttempt.FailureReason IN ['IssuerDeclined','RiskBlocked','Timeout']" }
+        ]
+      },
+      {
+        "offerId": "FeeWaiverSmallDelta",
+        "ruleName": "Elig_FeeWaiver",
+        "conditions": [
+          { "label": "Grace policy eligible", "expression": "PricingRules.GraceFeeWaiverEligible = true" },
+          { "label": "Minor delta or fee", "expression": "PaymentAttempt.FailureReason IN ['Timeout','NetworkError'] OR CheckoutContext.PromoCodeApplied = true" }
+        ]
+      }
+    ],
+    "treatmentEligibility": [
+      {
+        "offerId": "Service_SCAHelp",
+        "treatments": [
+          { "treatmentId": "Treat_SCAHelp_InlineGuide", "expression": "PaymentAttempt.RequiresSCA = true" },
+          { "treatmentId": "Treat_SCAHelp_ChatCard", "expression": "PaymentAttempt.FailureReason IN ['3DSFailure','SCARequired']" },
+          { "treatmentId": "Treat_SCAHelp_Email", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "Service_PaymentRetry",
+        "treatments": [
+          { "treatmentId": "Treat_Retry_InlineCTA", "expression": "CheckoutContext.AttemptCount <= 3" },
+          { "treatmentId": "Treat_Retry_AgentScript", "expression": "AgentChannel = true" }
+        ]
+      },
+      {
+        "offerId": "AltPay_UPI",
+        "treatments": [
+          { "treatmentId": "Treat_UPI_QR", "expression": "CustomerProfile.CountryOfResidence = 'IN'" },
+          { "treatmentId": "Treat_UPI_AgentLink", "expression": "AgentChannel = true AND CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "AltPay_NetBanking",
+        "treatments": [
+          { "treatmentId": "Treat_NB_BankList", "expression": "OperationalGuards.CurrencySupported = true" },
+          { "treatmentId": "Treat_NB_AgentLink", "expression": "AgentChannel = true AND CustomerProfile.ConsentSMS = true" }
+        ]
+      },
+      {
+        "offerId": "AltPay_Wallet",
+        "treatments": [
+          { "treatmentId": "Treat_Wallet_List", "expression": "true" }
+        ]
+      },
+      {
+        "offerId": "BNPL_Installments",
+        "treatments": [
+          { "treatmentId": "Treat_BNPL_Toggle", "expression": "CheckoutContext.BasketTotal >= PricingRules.BNPLMinBasket" },
+          { "treatmentId": "Treat_BNPL_EmailSchedule", "expression": "CustomerProfile.ConsentEmail = true" }
+        ]
+      },
+      {
+        "offerId": "SplitPayment",
+        "treatments": [
+          { "treatmentId": "Treat_SplitPay_Inline", "expression": "CheckoutContext.AncillaryAmount > 0" },
+          { "treatmentId": "Treat_SplitPay_Agent", "expression": "AgentChannel = true" }
+        ]
+      },
+      {
+        "offerId": "GraceHoldExtension",
+        "treatments": [
+          { "treatmentId": "Treat_HoldExtend_Inline", "expression": "OperationalGuards.TimeToHoldExpiryMinutes <= 45" },
+          { "treatmentId": "Treat_HoldExtend_Agent", "expression": "AgentChannel = true" }
+        ]
+      },
+      {
+        "offerId": "AgentAssistCheckout",
+        "treatments": [
+          { "treatmentId": "Treat_AgentAssist_CallMe", "expression": "CheckoutContext.AttemptCount >= 2" },
+          { "treatmentId": "Treat_AgentAssist_Chat", "expression": "ChatChannel = true" }
+        ]
+      },
+      {
+        "offerId": "FeeWaiverSmallDelta",
+        "treatments": [
+          { "treatmentId": "Treat_FeeWaiver_Apply", "expression": "AgentChannel = true" },
+          { "treatmentId": "Treat_FeeWaiver_Auto", "expression": "WebOrAppChannel = true AND PricingRules.GraceFeeWaiverEligible = true" }
+        ]
+      }
+    ]
+  },
+  "strategyDesign": {
+    "components": [
+      {
+        "id": "ContextLoader",
+        "type": "DataFlow",
+        "purpose": "Hydrate checkout session with profile, basket, payment attempt, operational guards, and pricing.",
+        "logic": [
+          "On payment failure: load CustomerProfile, CheckoutContext, PaymentAttempt, OperationalGuards, PricingRules",
+          "Cache TTL = 120 seconds; lock basket until next decision"
+        ]
+      },
+      {
+        "id": "IntentDetection",
+        "type": "Decision",
+        "purpose": "Confirm payment failure and classify cause.",
+        "logic": [
+          "IF PaymentAttempt.FailureReason != null THEN Intent = 'PaymentFailure'",
+          "Classify: SCA/3DS, InsufficientFunds, IssuerDeclined, Timeout/Network, InvalidDetails, RiskBlocked"
+        ]
+      },
+      {
+        "id": "EngagementPolicy",
+        "type": "Filter",
+        "purpose": "Apply common eligibility and prioritize service recovery.",
+        "logic": [
+          "Apply Common_Eligibility_* rules",
+          "Service-first: SCAHelp and PaymentRetry considered before alternatives"
+        ]
+      },
+      {
+        "id": "ActionEvaluation",
+        "type": "SubStrategy",
+        "purpose": "Evaluate per-offer eligibility and applicability reasons.",
+        "logic": [
+          "Run Elig_* rules per offer",
+          "Set applicability reasons: ['MarketNotSupported','BelowThreshold','HighRisk','HoldNearExpiry','TooManyAttempts']"
+        ]
+      },
+      {
+        "id": "Arbitration",
+        "type": "Rank",
+        "purpose": "Rank actions by conversion likelihood and friction reduction.",
+        "logic": [
+          "Score = w1*ServicePriority + w2*AdaptivePropensity + w3*ConversionLift + w4*RiskGuardrails",
+          "ServicePriority: SCAHelp=100, PaymentRetry=95, GraceHoldExtension=85, AltPay_UPI=80, AltPay_Wallet=78, AltPay_NetBanking=75, SplitPayment=72, BNPL=70, AgentAssist=68, FeeWaiver=60",
+          "Boost AltPay based on issuer/country fit"
+        ]
+      },
+      {
+        "id": "TreatmentSelection",
+        "type": "Chooser",
+        "purpose": "Pick the best treatment for the active channel.",
+        "logic": [
+          "Filter by treatment eligibility",
+          "Prefer inline recovery steps; agent or chat when attempts exceed guardrails"
+        ]
+      },
+      {
+        "id": "ContactPolicyCheck",
+        "type": "Policy",
+        "purpose": "Enforce cadence and attempt guardrails.",
+        "logic": [
+          "Apply GlobalFrequencyCaps and OfferLevelCaps",
+          "Suppress new offers if AttemptCount > 3; route to AgentAssist"
+        ]
+      },
+      {
+        "id": "Calculator_FeesAndWaiver",
+        "type": "Calculator",
+        "purpose": "Apply grace policies and compute installment schedules.",
+        "logic": [
+          "If FeeWaiver eligible: apply waiver/badge and recompute total",
+          "If BNPL selected: generate installment schedule and disclosure"
+        ]
+      },
+      {
+        "id": "ActionExecution",
+        "type": "Execution",
+        "purpose": "Render treatment and capture IH.",
+        "logic": [
+          "Persist IH: CustomerID, SessionID, OfferID, TreatmentID, Channel, Outcome, Attempts, FailureReason"
+        ]
+      },
+      {
+        "id": "LearningLoop",
+        "type": "AdaptiveModeling",
+        "purpose": "Update propensities for payment recovery paths.",
+        "logic": [
+          "Ingest retries, alt-pay selections, agent escalations",
+          "Boost suitability for methods that convert for similar failure reasons"
+        ]
+      }
+    ]
+  },
+  "contactPolicies": {
+    "globalFrequencyCaps": {
+      "Email": { "maxPer7Days": 2, "minIntervalHours": 24 },
+      "SMS_Push": { "maxPer48Hours": 2, "minIntervalHours": 12 },
+      "InSessionPrompts": { "maxPerSession": 3, "noRepeatWithinStep": true }
+    },
+    "offerLevelCaps": [
+      { "offerId": "Service_SCAHelp", "maxPerSession": 2, "suppressOn": ["SCACompleted"], "nonCommercial": true },
+      { "offerId": "Service_PaymentRetry", "maxPerSession": 2, "suppressOn": ["PaymentCaptured"] },
+      { "offerId": "AltPay_UPI", "maxPerSession": 1, "suppressOn": ["PaymentCaptured"] },
+      { "offerId": "AltPay_NetBanking", "maxPerSession": 1, "suppressOn": ["PaymentCaptured"] },
+      { "offerId": "AltPay_Wallet", "maxPerSession": 1, "suppressOn": ["PaymentCaptured"] },
+      { "offerId": "BNPL_Installments", "maxPerSession": 1, "suppressOn": ["PaymentCaptured"] },
+      { "offerId": "SplitPayment", "maxPerSession": 1, "suppressOn": ["PaymentCaptured"] },
+      { "offerId": "GraceHoldExtension", "maxPerSession": 1, "suppressOn": ["HoldExtended"] },
+      { "offerId": "AgentAssistCheckout", "maxPerSession": 1, "suppressOn": ["AgentCompleted"] },
+      { "offerId": "FeeWaiverSmallDelta", "maxPerSession": 1, "suppressOn": ["WaiverApplied"] }
+    ],
+    "contextualSuppressions": [
+      { "context": "HighRisk", "rule": "If PaymentAttempt.RiskScore > 0.7, suppress AltPay and BNPL; route to AgentAssist." },
+      { "context": "HoldExpired", "rule": "If OperationalGuards.TimeToHoldExpiryMinutes <= 0, suppress recovery offers and route to reprice flow." }
+    ],
+    "recencyRules": [
+      { "ruleName": "NoRepeatWithinStep", "expression": "Do not re-show the same recovery offer within the same payment step." },
+      { "ruleName": "PostSuccessSuppression", "expression": "After PaymentCaptured, suppress all recovery offers for 6 hours; only send confirmation." }
+    ]
+  },
+  "channels": ["Web", "App", "Chat", "Agent", "Email", "SMS"],
+  "implementationNotes": {
+    "actionsModeling": "Create Actions under Issue=CheckoutAndPayments, Group=PaymentFailureRecovery. Mark SCAHelp and PaymentRetry as service-type actions.",
+    "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* with reason codes; add suitability features by FailureReason.",
+    "arbitrationModel": "Service-first ranking, then lowest-friction alternative; incorporate issuer/country fit for AltPay; cap attempts.",
+    "treatmentsMapping": "Define inline and dialog treatments for Web/App; agent scripts for escalations; chat secure links for alt-pay.",
+    "contactPolicyConfig": "Apply caps and suppressions pre-arbitration; enforce attempts guardrails; respect high-risk routing.",
+    "dataFlows": "Real-time: payment gateway response, risk engine, basket/hold state; persist IH for audit and adaptive learning."
+  }
+}
