@@ -418,7 +418,7 @@
       { "ruleName": "PostExtensionQuiet", "expression": "After extension, suppress extension offers for 60 days." }
     ]
   },
-  "channels": ["Web", "App", "Email", "SMS", "Push", "Agent"],
+  "channels": ["Web", "App", "Email", "SMS", "Push"],
   "implementationNotes": {
     "actionsModeling": "Model Actions under Issue=RetentionAndValueRecovery, Group=UnusedVoucherActivation. Tag Summary/Reminder as service; others commercial with guardrails.",
     "eligibilityImplementation": "Apply Common_Eligibility at strategy start; implement per-offer Elig_* with PNR, policy, and product checks; capture reason codes.",
