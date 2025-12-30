@@ -23,8 +23,8 @@
       ],
       "sample": {
         "CustomerID": "CUST-110289",
-        "FullName": "Paruchuri N.",
-        "Email": "paruchuri@example.com",
+        "FullName": "XXX ",
+        "Email": "xxxx@example.com",
         "Mobile": "+91-9001234567",
         "LoyaltyTier": "Gold",
         "ConsentEmail": true,
